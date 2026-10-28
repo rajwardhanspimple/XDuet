@@ -185,6 +185,14 @@ async function main() {
   triageTokens["outage"] = 4.0;
   triageTokens["emergency"] = 4.2;
 
+  // Legal & DMCA Anchors
+  triageTokens["dmca"] = 7.0;
+  triageTokens["takedown notice"] = 7.0;
+  triageTokens["copyright infringement"] = 7.0;
+  triageTokens["subpoena"] = 7.0;
+  triageTokens["court summons"] = 7.0;
+  triageTokens["counter-notice"] = 7.0;
+
   // Real Gmail & Authentication Anchors
   triageTokens["single-use code"] = 7.0;
   triageTokens["verification code"] = 7.0;
@@ -279,6 +287,19 @@ async function main() {
       "do", "does", "did", "can", "could", "will", "would", "shall", "should",
     ]);
 
+    const CROSS_SKILL_EXCLUSIONS: Record<string, string[]> = {
+      database: ["email", "calendar", "weather", "github"],
+      shell: ["calendar", "weather"],
+      calendar: ["database", "weather"],
+      weather: ["database", "github", "shell"],
+    };
+    const SKILL_AFFIRMATIVE_TERMS: Record<string, string[]> = {
+      database: ["database", "sql", "postgres", "table", "schema", "query", "migration", "relation"],
+      shell: ["shell", "bash", "terminal", "curl", "grep", "cat", "script", "kill", "process"],
+      calendar: ["calendar", "event", "meeting", "schedule"],
+      weather: ["weather", "forecast", "temperature", "rain", "sunny", "snow"],
+    };
+
     for (const f of sVocab) {
       const parts = f.replace(/_/g, " ").split(/\s+/);
       if (parts.every((p) => TOOL_STOPWORDS.has(p))) continue;
@@ -288,6 +309,23 @@ async function main() {
       const n = (countNeg + alphaS) / (sNeg + 2 * alphaS);
       let lodds = Math.log(p / n);
       if (countPos === 0) lodds = Math.min(lodds, -0.5);
+
+      // Prevent cross-skill spurious leakage in positive tokens
+      const excl = CROSS_SKILL_EXCLUSIONS[sk];
+      if (excl && lodds > 0) {
+        const hasExcl = excl.some((w) => f.includes(w));
+        const aff = SKILL_AFFIRMATIVE_TERMS[sk];
+        const hasAff = aff?.some((w) => f.includes(w));
+        if (hasExcl && !hasAff) {
+          lodds = 0.0;
+        }
+      }
+
+      // Soft-clamp negative cross-skill penalties to allow multi-tool compound prompts
+      if (lodds < -1.8) {
+        lodds = -1.8;
+      }
+
       if (Math.abs(lodds) > 0.2) {
         tokens[f] = Number(lodds.toFixed(3));
       }
@@ -372,6 +410,14 @@ async function main() {
   const routingTokensWeights: Record<string, Record<string, number>> = {};
   const alphaR = 0.5;
 
+  const ROUTING_STOPWORDS = new Set([
+    "the", "and", "in", "of", "to", "a", "an", "is", "for", "on", "with",
+    "as", "by", "at", "from", "be", "or", "that", "this", "it", "are",
+    "was", "were", "what", "its", "our", "your", "my", "have", "has", "had",
+    "do", "does", "did", "can", "could", "will", "would", "shall", "should",
+    "all", "are", "any", "text", "state", "message", "our"
+  ]);
+
   for (const r of routingRoles) {
     routingBiases[r] = Number(Math.log(rDocCounts[r] / routingSamples.length).toFixed(3));
     routingTokensWeights[r] = {};
@@ -379,6 +425,8 @@ async function main() {
     const nNotR = routingSamples.length - nR;
 
     for (const f of rVocab) {
+      const parts = f.replace(/_/g, " ").split(/\s+/);
+      if (parts.every((p) => ROUTING_STOPWORDS.has(p))) continue;
       const countR = rWordCounts[r][f] || 0;
       let countNotR = 0;
       for (const other of routingRoles) {
@@ -392,6 +440,28 @@ async function main() {
       }
     }
   }
+
+  // Anchor routing terms
+  routingTokensWeights["billing"]["stripe"] = 4.0;
+  routingTokensWeights["billing"]["subscriptions"] = 4.0;
+  routingTokensWeights["billing"]["past_due"] = 4.0;
+  routingTokensWeights["billing"]["refund"] = 4.0;
+  routingTokensWeights["billing"]["audit"] = 2.0;
+  routingTokensWeights["billing"]["notices"] = 2.0;
+  routingTokensWeights["ops"]["nginx"] = 5.0;
+  routingTokensWeights["ops"]["gateway timeout"] = 4.0;
+  routingTokensWeights["ops"]["access logs"] = 4.0;
+  routingTokensWeights["ops"]["prometheus"] = 4.0;
+  routingTokensWeights["ops"]["pagerduty"] = 4.0;
+  routingTokensWeights["coder"]["typescript"] = 4.0;
+  routingTokensWeights["coder"]["typeerror"] = 4.0;
+  routingTokensWeights["coder"]["flexbox"] = 4.0;
+  routingTokensWeights["coder"]["migration script"] = 4.0;
+  routingTokensWeights["writer"]["release notes"] = 5.0;
+  routingTokensWeights["writer"]["investor update"] = 5.0;
+  routingTokensWeights["writer"]["documentation"] = 4.0;
+  routingTokensWeights["researcher"]["literature"] = 5.0;
+  routingTokensWeights["researcher"]["architectural comparison"] = 5.0;
 
   // ===========================================================================
   // 5. ASSEMBLE WEIGHTS & EVALUATE

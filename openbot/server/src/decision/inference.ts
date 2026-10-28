@@ -181,7 +181,7 @@ export class DeciderInferenceEngine {
 
       // High-precedence critical incidents
       const isCriticalIncident = 
-        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours/i.test(cleanLower) ||
+        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours|dmca|copyright infringement|subpoena|court summons|legal notice|takedown notice|counter-notice|regulatory notice/i.test(cleanLower) ||
         /\[.*support\] re:/i.test(subj);
 
       if (isCriticalIncident) {
@@ -221,23 +221,56 @@ export class DeciderInferenceEngine {
       const cleanLower = fullText.toLowerCase();
 
       // Check for explicit negative constraints on this tool
+      const targetMap: Record<string, string> = {
+        shell: "(shell|bash|terminal|command|commands|script|scripts)",
+        email: "(email|mail|message|notification)",
+        database: "(database|db|postgres|sql|table|tables|query|queries)",
+        github: "(github|git|pr|prs|repository|repo)",
+        calendar: "(calendar|event|meeting|schedule)",
+        weather: "(weather|forecast)",
+        memory: "(memory|remember|notes?)",
+        computer: "(computer|browser|screen)",
+      };
+      const targets = targetMap[skillSlug] || `(${skillSlug}|${qid}|sql)`;
       const negRegex = new RegExp(
-        `\\b(do not|don't|dont|never|avoid|without|skip)\\s+(touch|use|query|access|modify|call|invoke)?\\s*(the\\s+)?(${skillSlug}|${qid}|sql)\\b`,
+        `\\b(do not|don't|dont|never|avoid|without|skip)\\s+([a-z]+\\s+)?(any\\s+|all\\s+|the\\s+|a\\s+|our\\s+)?${targets}\\b`,
         "i"
       );
       if (negRegex.test(cleanLower)) {
         return { type: "noul", noul: 0.01 };
       }
 
-      // Metaphor / Idiom disambiguation
-      if (skillSlug === "weather" && /\bweathering the storm\b/i.test(cleanLower)) {
-        return { type: "noul", noul: 0.01 };
+      // Metaphor / Idiom / Context disambiguation
+      if (skillSlug === "weather") {
+        if (/\bweathering the storm\b/i.test(cleanLower) || /\b(weather_history|\.csv|dataset|csv file|from local file)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.01 };
+        }
       }
-      if (skillSlug === "github" && /\b(commit our (git )?changes|git commit)\b/i.test(cleanLower)) {
+      if (skillSlug === "github" && /\b(commit our (git )?changes|git commit|review pull requests?|git diff)\b/i.test(cleanLower)) {
         return { type: "noul", noul: 0.99 };
       }
       if (skillSlug === "memory" && /\b(update (our )?(local )?memory|save to memory|store in memory|remember that|remember my|memory cache)\b/i.test(cleanLower)) {
         return { type: "noul", noul: 0.99 };
+      }
+      if (skillSlug === "shell") {
+        if (/\b(calendar invite|schedule a .* invite|security guidelines|review our shell)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.01 };
+        }
+        if (/\b(shell curl|using shell|in the terminal|terminal command|run (a )?(shell|bash) script|execute (a )?(shell|bash) script|run in terminal)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.99 };
+        }
+      }
+      if (skillSlug === "calendar" && /\b(company calendar|on (my )?calendar|search (our )?calendar|calendar event|hiking calendar|schedule a (team )?meeting)\b/i.test(cleanLower)) {
+        return { type: "noul", noul: 0.99 };
+      }
+      if (skillSlug === "database") {
+        if (/\b(search|look up|check|when).*calendar\b/i.test(cleanLower) && !/\b(run sql|query postgres|database table|select \*|insert into)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.01 };
+        }
+        // Suppress database if query has zero database concepts and is about logs/curl/email
+        if (!/\b(database|sql|postgres|mysql|sqlite|table|query|schema|migration|row|select|insert|upsert|relation)\b/i.test(cleanLower) && /\b(error logs|shell curl|curl|timestamps|summary)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.01 };
+        }
       }
 
       let score = this.weights.toolWeights.bias + skillConfig.bias;
@@ -337,6 +370,10 @@ export class DeciderInferenceEngine {
         stateLower.includes("ss -tulpn") ||
         stateLower.includes("git log") ||
         stateLower.includes("git status") ||
+        stateLower.includes("git diff") ||
+        stateLower.includes("fdisk -l") ||
+        stateLower.includes("fdisk --list") ||
+        stateLower.includes("journalctl") ||
         stateLower.includes("tail -n") ||
         stateLower.includes("freebusy") ||
         stateLower.includes("ping ") ||
@@ -348,6 +385,12 @@ export class DeciderInferenceEngine {
       }
 
       if (
+        stateLower.includes("| bash") ||
+        stateLower.includes("| sh") ||
+        stateLower.includes("| zsh") ||
+        stateLower.includes("| sudo") ||
+        stateLower.includes("git push --force") ||
+        stateLower.includes("git push -f") ||
         stateLower.includes("chmod") ||
         stateLower.includes("delete_all") ||
         stateLower.includes("bulk_close") ||
@@ -447,6 +490,23 @@ export class DeciderInferenceEngine {
           }
         }
         rawScores[key] = score;
+      }
+
+      // Strong domain calibrators for coworker routing
+      if (/\b(stripe subscriptions?|past_due|subscription balance|refund for customer|refund.*subscription)\b/i.test(stateLower) && !/\b(typeerror|exception|debug|syntax error)\b/i.test(stateLower)) {
+        rawScores["billing"] = (rawScores["billing"] ?? 0) + 8.0;
+      }
+      if (/\b(nginx|keepalive|access logs|504 gateway|alerting rules|pagerduty|escalation policies|kubernetes cluster)\b/i.test(stateLower)) {
+        rawScores["ops"] = (rawScores["ops"] ?? 0) + 8.0;
+      }
+      if (/\b(release notes|blog post|customer documentation|user documentation|investor update)\b/i.test(stateLower)) {
+        rawScores["writer"] = (rawScores["writer"] ?? 0) + 8.0;
+      }
+      if (/\b(literature|architectural.*comparison|trade-offs.*benchmarks)\b/i.test(stateLower)) {
+        rawScores["researcher"] = (rawScores["researcher"] ?? 0) + 8.0;
+      }
+      if (/\b(flexbox|typeerror|uncaught|sql migration|docker compose up|unit tests?)\b/i.test(stateLower)) {
+        rawScores["coder"] = (rawScores["coder"] ?? 0) + 8.0;
       }
     } else {
       for (const key of criteriaKeys) {
