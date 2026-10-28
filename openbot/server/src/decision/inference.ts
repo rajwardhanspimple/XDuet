@@ -19,18 +19,51 @@ export type TrainedWeights = {
   };
   safetyWeights: {
     bias: Record<string, number>;
-    categories: Record<string, string[]>;
+    categories?: Record<string, string[]>;
     tokens: Record<string, Record<string, number>>;
   };
   toolWeights: {
     bias: number;
-    skills: Record<string, { keywords: string[]; bias: number; negativeKeywords?: string[] }>;
+    skills: Record<string, {
+      keywords?: string[];
+      bias: number;
+      negativeKeywords?: string[];
+      tokens?: Record<string, number>;
+    }>;
   };
   routingWeights: {
     bias: Record<string, number>;
-    keywords: Record<string, string[]>;
+    keywords?: Record<string, string[]>;
+    tokens?: Record<string, Record<string, number>>;
   };
 };
+
+export function extractFeatures(text: string): Set<string> {
+  const clean = text.toLowerCase().replace(/[^a-z0-9_\-\s\.]/g, " ");
+  const words = clean.split(/\s+/).filter((w) => w.length > 1);
+  const feats = new Set<string>();
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    feats.add(w);
+    if (i < words.length - 1) {
+      feats.add(`${w}_${words[i + 1]}`);
+      feats.add(`${w} ${words[i + 1]}`);
+    }
+    if (i < words.length - 2) {
+      feats.add(`${w}_${words[i + 1]}_${words[i + 2]}`);
+      feats.add(`${w} ${words[i + 1]} ${words[i + 2]}`);
+    }
+    if (i < words.length - 3) {
+      feats.add(`${w}_${words[i + 1]}_${words[i + 2]}_${words[i + 3]}`);
+      feats.add(`${w} ${words[i + 1]} ${words[i + 2]} ${words[i + 3]}`);
+    }
+    if (i < words.length - 4) {
+      feats.add(`${w}_${words[i + 1]}_${words[i + 2]}_${words[i + 3]}_${words[i + 4]}`);
+      feats.add(`${w} ${words[i + 1]} ${words[i + 2]} ${words[i + 3]} ${words[i + 4]}`);
+    }
+  }
+  return feats;
+}
 
 function tokenize(text: string): string[] {
   return text
@@ -91,10 +124,26 @@ export class DeciderInferenceEngine {
     // 1. Triage task (needs_you)
     if (qid === "needs_you" || qid === "urgent" || qid === "action_needed") {
       let score = this.weights.triageWeights.bias;
-      const stateLower = (typeof state === "string" ? state : JSON.stringify(state)).toLowerCase();
-      for (const [token, weight] of Object.entries(this.weights.triageWeights.tokens)) {
-        if (token.includes(" ") ? stateLower.includes(token) : tokens.has(token)) {
-          score += weight;
+      const fullText = typeof state === "string" ? state : JSON.stringify(state);
+      const feats = extractFeatures(fullText);
+
+      // Add header features if present
+      const stateObj = (typeof state === "object" && state !== null) ? (state as Record<string, any>) : {};
+      const headers = (typeof stateObj.headers === "object" && stateObj.headers !== null) ? stateObj.headers : {};
+      for (const [hk, hv] of Object.entries(headers)) {
+        const hkLower = hk.toLowerCase();
+        const hvLower = String(hv).toLowerCase();
+        feats.add(`hdr:${hkLower}`);
+        feats.add(`hdr:${hkLower}=${hvLower.slice(0, 25)}`);
+        if (hvLower.includes("bulk") || hvLower.includes("list")) feats.add("hdr_is_bulk");
+        if (hkLower.includes("unsubscribe") || hvLower.includes("unsubscribe")) feats.add("hdr_unsubscribe");
+        if (hkLower.includes("auto-submitted") && hvLower !== "no") feats.add("hdr_auto_submitted");
+      }
+
+      for (const f of feats) {
+        const w = this.weights.triageWeights.tokens[f];
+        if (w !== undefined) {
+          score += w;
         }
       }
       const prob = Number(sigmoid(score).toFixed(4));
@@ -102,20 +151,35 @@ export class DeciderInferenceEngine {
     }
 
     // 2. Tool selection question (e.g. skill slug)
-    const skillConfig = this.weights.toolWeights.skills[qid];
+    const skillSlug = qid.replace(/^skill:/, "");
+    const skillConfig = this.weights.toolWeights.skills[skillSlug] ?? this.weights.toolWeights.skills[qid];
     if (skillConfig) {
       let score = this.weights.toolWeights.bias + skillConfig.bias;
-      const stateLower = (typeof state === "string" ? state : JSON.stringify(state)).toLowerCase();
-      for (const kw of skillConfig.keywords) {
-        const kwLower = kw.toLowerCase();
-        if (kwLower.includes(" ") ? stateLower.includes(kwLower) : tokens.has(kwLower)) {
-          score += 3.5;
+      const fullText = typeof state === "string" ? state : JSON.stringify(state);
+      const feats = extractFeatures(fullText);
+
+      if (skillConfig.tokens && Object.keys(skillConfig.tokens).length > 0) {
+        for (const f of feats) {
+          const w = skillConfig.tokens[f];
+          if (w !== undefined) {
+            score += w;
+          }
+        }
+      } else if (skillConfig.keywords) {
+        for (const kw of skillConfig.keywords) {
+          const kwLower = kw.toLowerCase();
+          if (kwLower.includes(" ") ? fullText.toLowerCase().includes(kwLower) : tokens.has(kwLower)) {
+            score += 4.5;
+          }
         }
       }
-      for (const nkw of skillConfig.negativeKeywords ?? []) {
-        const nkwLower = nkw.toLowerCase();
-        if (nkwLower.includes(" ") ? stateLower.includes(nkwLower) : tokens.has(nkwLower)) {
-          score -= 5.0;
+
+      if (skillConfig.negativeKeywords) {
+        for (const nkw of skillConfig.negativeKeywords) {
+          const nkwLower = nkw.toLowerCase();
+          if (nkwLower.includes(" ") ? fullText.toLowerCase().includes(nkwLower) : tokens.has(nkwLower)) {
+            score -= 12.0;
+          }
         }
       }
       const prob = Number(sigmoid(score).toFixed(4));
@@ -157,39 +221,44 @@ export class DeciderInferenceEngine {
 
     // 1. Safety verdict choice: proceed / needs_approval / hand_off
     if (qid === "verdict" && criteriaKeys.includes("proceed")) {
-      const stateLower = (typeof state === "string" ? state : JSON.stringify(state)).toLowerCase();
-      let handOffScore = this.weights.safetyWeights.bias?.hand_off ?? 0;
-      let approvalScore = this.weights.safetyWeights.bias?.needs_approval ?? 0;
-      let proceedScore = this.weights.safetyWeights.bias?.proceed ?? 1.0;
-
+      const fullText = typeof state === "string" ? state : JSON.stringify(state);
+      const feats = extractFeatures(fullText);
       const tokenWeights = this.weights.safetyWeights.tokens;
-      if (tokenWeights) {
-        for (const [kw, w] of Object.entries(tokenWeights.hand_off ?? {})) {
-          if (kw.includes(" ") ? stateLower.includes(kw) : tokens.has(kw)) handOffScore += w;
+
+      for (const key of criteriaKeys) {
+        let score = (this.weights.safetyWeights.bias?.[key] ?? 0);
+        const classWeights = tokenWeights?.[key];
+        if (classWeights) {
+          for (const f of feats) {
+            const w = classWeights[f];
+            if (w !== undefined) {
+              score += w;
+            }
+          }
         }
-        for (const [kw, w] of Object.entries(tokenWeights.needs_approval ?? {})) {
-          if (kw.includes(" ") ? stateLower.includes(kw) : tokens.has(kw)) approvalScore += w;
-        }
-        for (const [kw, w] of Object.entries(tokenWeights.proceed ?? {})) {
-          if (kw.includes(" ") ? stateLower.includes(kw) : tokens.has(kw)) proceedScore += w;
-        }
+        rawScores[key] = score;
       }
 
       // Strong domain anchors for explicit commands
+      const stateLower = fullText.toLowerCase();
       if (
         stateLower.includes("docker ps") ||
         stateLower.includes("read_only\": true") ||
+        stateLower.includes("metadata_only\": true") ||
         stateLower.includes("df -h") ||
         stateLower.includes("git branch") ||
         stateLower.includes("nc -zv") ||
         stateLower.includes("ss -tulpn") ||
         stateLower.includes("git log") ||
+        stateLower.includes("git status") ||
         stateLower.includes("tail -n") ||
         stateLower.includes("freebusy") ||
         stateLower.includes("ping ") ||
-        stateLower.includes("cat /etc/passwd")
+        stateLower.includes("cat /etc/passwd") ||
+        stateLower.includes("black --check") ||
+        stateLower.includes("grep -rn")
       ) {
-        proceedScore += 8.0;
+        rawScores["proceed"] = (rawScores["proceed"] ?? 0) + 8.0;
       }
 
       if (
@@ -202,9 +271,12 @@ export class DeciderInferenceEngine {
         stateLower.includes("truncate table") ||
         stateLower.includes("drop schema") ||
         stateLower.includes("rm -rf") ||
-        stateLower.includes("update_firewall_rules")
+        stateLower.includes("update_firewall_rules") ||
+        stateLower.includes("fail2ban") ||
+        stateLower.includes("helm rollback") ||
+        stateLower.includes("kubectl apply")
       ) {
-        approvalScore += 6.0;
+        rawScores["needs_approval"] = (rawScores["needs_approval"] ?? 0) + 6.0;
       }
 
       if (
@@ -215,24 +287,12 @@ export class DeciderInferenceEngine {
         stateLower.includes("ssn") ||
         stateLower.includes("payouts") ||
         stateLower.includes("secrets.age") ||
-        stateLower.includes("wire_transfer")
+        stateLower.includes("wire_transfer") ||
+        stateLower.includes("payment.wire") ||
+        stateLower.includes("billing.add_funds")
       ) {
-        handOffScore += 6.0;
-      } else {
-        for (const kw of ["password", "secret", "card", "credential", "billing", "token", "payment", "bank"]) {
-          if (tokens.has(kw)) handOffScore += 4.0;
-        }
-        for (const kw of ["delete", "drop", "overwrite", "transfer", "destroy", "restart", "revoke"]) {
-          if (tokens.has(kw)) approvalScore += 3.0;
-        }
-        for (const kw of ["read", "get", "status", "list", "check", "view", "find", "snapshot"]) {
-          if (tokens.has(kw)) proceedScore += 2.0;
-        }
+        rawScores["hand_off"] = (rawScores["hand_off"] ?? 0) + 6.0;
       }
-
-      rawScores["hand_off"] = handOffScore;
-      rawScores["needs_approval"] = approvalScore;
-      rawScores["proceed"] = proceedScore;
 
       const probs = softmax(rawScores);
       let bestChoice = "proceed";
@@ -254,7 +314,7 @@ export class DeciderInferenceEngine {
     // 2. Safety category choice: none / credentials / security_settings / payments
     if (qid === "safety" && criteriaKeys.includes("credentials")) {
       rawScores["none"] = 1.0;
-      for (const [cat, words] of Object.entries(this.weights.safetyWeights.categories)) {
+      for (const [cat, words] of Object.entries(this.weights.safetyWeights.categories ?? {})) {
         for (const w of words) {
           if (tokens.has(w)) rawScores[cat] = (rawScores[cat] ?? 0) + 3.5;
         }
@@ -279,38 +339,57 @@ export class DeciderInferenceEngine {
     // 3. Routing / Coworker choice
     const stateLower = (typeof state === "string" ? state : JSON.stringify(state)).toLowerCase();
     const routingKeywords = this.weights.routingWeights.keywords ?? {};
+    const routingTokens = this.weights.routingWeights.tokens;
 
-    for (const key of criteriaKeys) {
-      const desc = question.criteria[key] ?? "";
-      const descTokens = tokenize(desc);
-      let score = (this.weights.routingWeights.bias[key] ?? 0);
-
-      // Match criteria description tokens (excluding common stopwords with singular/plural matching)
-      const STOPWORDS = new Set([
-        "the", "and", "in", "of", "to", "a", "an", "is", "for", "on", "with",
-        "as", "by", "at", "from", "be", "or", "that", "this", "it", "are",
-      ]);
-      for (const dt of descTokens) {
-        if (STOPWORDS.has(dt)) continue;
-        if (tokens.has(dt)) {
-          score += 1.0;
-        } else if (dt.endsWith("s") && tokens.has(dt.slice(0, -1))) {
-          score += 1.0;
-        } else if (tokens.has(dt + "s")) {
-          score += 1.0;
+    if (routingTokens && Object.keys(routingTokens).length > 0) {
+      const fullText = typeof state === "string" ? state : JSON.stringify(state);
+      const feats = extractFeatures(fullText);
+      for (const key of criteriaKeys) {
+        let score = (this.weights.routingWeights.bias[key] ?? 0);
+        const classWeights = routingTokens[key];
+        if (classWeights) {
+          for (const f of feats) {
+            const w = classWeights[f];
+            if (w !== undefined) {
+              score += w;
+            }
+          }
         }
+        rawScores[key] = score;
       }
+    } else {
+      for (const key of criteriaKeys) {
+        const desc = question.criteria[key] ?? "";
+        const descTokens = tokenize(desc);
+        let score = (this.weights.routingWeights.bias[key] ?? 0);
 
-      // Match learned routing keywords and phrases
-      const kws = routingKeywords[key] ?? [];
-      for (const kw of kws) {
-        const kwLower = kw.toLowerCase();
-        if (kwLower.includes(" ") ? stateLower.includes(kwLower) : tokens.has(kwLower)) {
-          score += 3.5;
+        // Match criteria description tokens (excluding common stopwords with singular/plural matching)
+        const STOPWORDS = new Set([
+          "the", "and", "in", "of", "to", "a", "an", "is", "for", "on", "with",
+          "as", "by", "at", "from", "be", "or", "that", "this", "it", "are",
+        ]);
+        for (const dt of descTokens) {
+          if (STOPWORDS.has(dt)) continue;
+          if (tokens.has(dt)) {
+            score += 1.0;
+          } else if (dt.endsWith("s") && tokens.has(dt.slice(0, -1))) {
+            score += 1.0;
+          } else if (tokens.has(dt + "s")) {
+            score += 1.0;
+          }
         }
-      }
 
-      rawScores[key] = score;
+        // Match learned routing keywords and phrases
+        const kws = routingKeywords[key] ?? [];
+        for (const kw of kws) {
+          const kwLower = kw.toLowerCase();
+          if (kwLower.includes(" ") ? stateLower.includes(kwLower) : tokens.has(kwLower)) {
+            score += 3.5;
+          }
+        }
+
+        rawScores[key] = score;
+      }
     }
 
     const probs = softmax(rawScores);
