@@ -212,6 +212,19 @@ async function main() {
   triageTokens["rsvp is optional"] = -7.0;
   triageTokens["optional attendance"] = -7.0;
 
+  // WikiLeaks Executive & Diplomatic Communication Anchors
+  triageTokens["pls clear"] = 7.0;
+  triageTokens["please clear"] = 7.0;
+  triageTokens["need clearance"] = 7.0;
+  triageTokens["can we talk"] = 6.0;
+  triageTokens["are you still here"] = 6.0;
+  triageTokens["call before you leave"] = 7.0;
+  triageTokens["call me thru ops"] = 6.0;
+  triageTokens["call me at end"] = 6.0;
+  triageTokens["strategic assessment"] = -6.0;
+  triageTokens["public affairs staffing"] = -6.0;
+  triageTokens["attached for your records"] = -6.0;
+
   // ===========================================================================
   // 2. TOOLS MODEL FITTING
   // ===========================================================================

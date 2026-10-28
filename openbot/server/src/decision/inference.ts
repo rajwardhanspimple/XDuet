@@ -169,7 +169,7 @@ export class DeciderInferenceEngine {
         headerLabels.includes("category_promotions") ||
         headerLabels.includes("spam") ||
         /\b(50% off|flash sale|super-early-bird|early-bird|product hunt|livestream|perk :|weekly digest|weekly ai innovations|newsletter|web drop|primogems|scary story|free tier access expires soon|tokens login to claim|138 million tokens|unlimited ai video|sold out in sf|explore the forge agenda)\b/i.test(cleanLower) ||
-        /your cart is about to expire|no action needed|no action is needed|no action is required|for your records only|fyi only|accepted the invitation|has accepted this invitation|invoice payment confirmation|your invoice is available|receipt for your|rsvp not required|no rsvp needed|rsvp is optional|optional attendance|purely optional/i.test(cleanLower) ||
+        /your cart is about to expire|no action needed|no action is needed|no action is required|for your records only|fyi only|accepted the invitation|has accepted this invitation|invoice payment confirmation|your invoice is available|receipt for your|rsvp not required|no rsvp needed|rsvp is optional|optional attendance|purely optional|strategic assessment.*for fy\d{4}|background summary of bilateral talks|attached is our \d+-page strategic assessment/i.test(cleanLower) ||
         /confirm your subscription/i.test(cleanLower);
 
       if (isMarketingPromo) {
@@ -179,9 +179,9 @@ export class DeciderInferenceEngine {
         return { type: "noul", noul: 0.01 };
       }
 
-      // High-precedence critical incidents
+      // High-precedence critical incidents & executive clearances
       const isCriticalIncident = 
-        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours|dmca|copyright infringement|subpoena|court summons|legal notice|takedown notice|counter-notice|regulatory notice/i.test(cleanLower) ||
+        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours|dmca|copyright infringement|subpoena|court summons|legal notice|takedown notice|counter-notice|regulatory notice|pls clear|please clear|need clearance|pls sign off|sign-off before|attached for your review and sign-off|need your sign-off|are you still here|are you in the office/i.test(cleanLower) ||
         /\[.*support\] re:/i.test(subj);
 
       if (isCriticalIncident) {
