@@ -139,6 +139,8 @@ export function createOpenDuetTools(deps: {
   callTool: CallTool;
   complete: Complete;
   model: string;
+  /** The typed triage path, when a decision provider is configured. */
+  decide?: NonNullable<Parameters<typeof buildMorningBrief>[0]["decide"]>;
   /** The person's own conversation with a Bot, made if they have none; where an asked task starts. */
   directChannel: (
     ownerUserId: string,
@@ -195,6 +197,7 @@ export function createOpenDuetTools(deps: {
             callTool: deps.callTool,
             complete: deps.complete,
             model: deps.model,
+            ...(deps.decide ? { decide: deps.decide } : {}),
           },
           input,
         ),

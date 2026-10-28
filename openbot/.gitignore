@@ -21,6 +21,8 @@ node_modules
 app/src/lib/generated/application-config.ts
 .logs/
 .demo-logs/
+# Local supervisor state: PIDs and per-service logs from `bun run local:up`.
+.run/
 **/.impeccable
 .wave-state.md
 

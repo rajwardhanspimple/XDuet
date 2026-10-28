@@ -303,24 +303,32 @@ describe("registered Copilot agents", () => {
   });
 
   test("configures an OpenAI built-in agent", () => {
+    const configuration = builtInAgentConfiguration(
+      {
+        id: "general-assistant",
+        name: "General Assistant",
+        type: "built_in",
+        systemPrompt: "Be helpful.",
+      },
+      { provider: "openai", defaultModel: "gpt-5.6-terra" },
+      "openai-secret",
+    );
+
+    if (!("model" in configuration)) {
+      throw new Error("Expected a classic built-in agent configuration.");
+    }
+    // The local `.env` points OPENAI_BASE_URL at Inception, so the model is the Chat Completions
+    // object built in copilot.ts rather than the runtime's provider string. Without that variable
+    // the runtime resolves `openai/gpt-5.6-terra` itself. Both must name the configured model.
     expect(
-      builtInAgentConfiguration(
-        {
-          id: "general-assistant",
-          name: "General Assistant",
-          type: "built_in",
-          systemPrompt: "Be helpful.",
-        },
-        { provider: "openai", defaultModel: "gpt-5.6-terra" },
-        "openai-secret",
-      ),
-    ).toEqual({
-      model: "openai/gpt-5.6-terra",
-      // The provenance rule is unconditional, so even a Bot with no tools and no computer carries
-      // it. That Bot needs it most: nothing it says was read anywhere.
-      prompt: `Be helpful.\n\n${PROVENANCE_GUIDANCE}\n\n${UNTRUSTED_GUIDANCE}`,
-      apiKey: "openai-secret",
-    });
+      typeof configuration.model === "string"
+        ? configuration.model
+        : `openai/${configuration.model.modelId}`,
+    ).toBe("openai/gpt-5.6-terra");
+    expect(configuration.prompt).toBe(
+      `Be helpful.\n\n${PROVENANCE_GUIDANCE}\n\n${UNTRUSTED_GUIDANCE}`,
+    );
+    expect(configuration.apiKey).toBe("openai-secret");
   });
 
   test("fails an unavailable built-in agent through the AG-UI lifecycle", async () => {

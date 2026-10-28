@@ -44,6 +44,27 @@ Use `bash scripts/stop.sh` to take it down: the app, the routine worker, the API
 
 Use `bun run dev` only when you want the app and API server without starting the Docker Bots and computers.
 
+### Local mode without Docker
+
+Set `OPENBOT_LOCAL_MODE=true` and point `DATABASE_URL` at a running PostgreSQL. The local stack
+needs Bun and that database; it does not need Docker or CopilotKit Intelligence.
+
+```sh
+bun run local:up      # migrate, then start the computer, server, worker and app
+bun run local:status  # health for all four; worker PID from the supervisor file
+bun run local:down    # stop only what local:up started
+```
+
+`local:up` writes logs to `.run/logs/<service>.log` and PIDs to `.run/local-stack.json`. It leaves a
+service that is already healthy alone, so stop a stale server with `local:down` before testing a
+new build. Postgres itself is not started by the supervisor: a local database can be a service, a
+Homebrew formula, or a remote URL, and guessing which would make the launcher a second deployment
+system. A failed migration is the explicit answer that `DATABASE_URL` is not reachable.
+
+The worker is the routine sweeper. Without it, routines are stored but never fire. The server owns
+the durable thread runner; the worker calls back into `/internal/routines/run` rather than running
+an agent itself, so a routine turn uses the same Postgres history and lock as a browser turn.
+
 | Service           | Port                       |
 | ----------------- | -------------------------- |
 | `app`             | 3010                       |

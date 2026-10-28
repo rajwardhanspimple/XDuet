@@ -1,7 +1,7 @@
 import { MORNING_BRIEF_TOOL } from "@openbot/shared/morning-brief";
 import type { GrantedTool } from "@openbot/toolkit/granted-tool";
-import type { AuditInitiator } from "../audit";
 import { z } from "zod";
+import type { AuditInitiator } from "../audit";
 import {
   type Complete,
   type TriageMessage,
@@ -176,6 +176,8 @@ export async function buildMorningBrief(
     complete: Complete;
     model: string;
     now?: () => Date;
+    /** The typed triage path, when a decision provider is configured. */
+    decide?: NonNullable<Parameters<typeof triage>[2]["decide"]>;
   },
   input: {
     actorId: string;
@@ -259,6 +261,7 @@ export async function buildMorningBrief(
           complete: deps.complete,
           model: deps.model,
           now: () => now,
+          ...(deps.decide ? { decide: deps.decide } : {}),
         }),
       };
     } catch (error) {

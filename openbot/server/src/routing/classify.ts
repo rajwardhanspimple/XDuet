@@ -184,9 +184,28 @@ function onlyCoworkerReaching(
   return null;
 }
 
+export type RoutingDecisionAnswer = {
+  agentId: string;
+  confidence: number;
+};
+
 export function createIntentRouter(deps: {
   /** Runs the prompt and returns the model's raw text. May reject; the router absorbs it. */
   complete: (prompt: string) => Promise<string>;
+  /**
+   * The typed decision path, when a decision provider is configured.
+   *
+   * It is authoritative when present: the prose completion below is not called as a second opinion.
+   * A decision that fails or names somebody off the roster goes through the same fallback as a
+   * malformed completion, so the failure is recorded rather than silently answered by a different
+   * model with different calibration.
+   */
+  decide?: (
+    text: string,
+    candidates: readonly RoutingCandidate[],
+  ) => Promise<RoutingDecisionAnswer | null>;
+  /** Below this a match is a guess. Defaults to the router's long-standing 0.6. */
+  minConfidence?: number;
 }) {
   return {
     async route(
@@ -195,6 +214,7 @@ export function createIntentRouter(deps: {
       defaultId: string,
     ): Promise<RoutingDecision> {
       const byId = new Map(candidates.map((c) => [c.id, c]));
+      const minConfidence = deps.minConfidence ?? MIN_CONFIDENCE;
       const fallback = (
         reason: string,
         undecided: RoutingUndecided,
@@ -246,6 +266,49 @@ export function createIntentRouter(deps: {
         return fallback("the only coworker available", "one-candidate");
       }
 
+      /*
+       * The typed decision, when there is one, is the router. It is not tried after the prose model
+       * and it does not get a second opinion: two routers with different calibration would make the
+       * recorded reason a guess about which one answered.
+       */
+      if (this._decide) {
+        let answer: RoutingDecisionAnswer | null;
+        try {
+          answer = await this._decide(text, candidates);
+        } catch {
+          return fallback(
+            "sent to your default while the decision router was unreachable",
+            "unreachable",
+          );
+        }
+        if (!answer) {
+          return fallback(
+            "sent to your default; the decision router returned no choice",
+            "unparsed",
+          );
+        }
+        const decided = byId.get(answer.agentId);
+        if (!decided) {
+          return fallback(
+            "sent to your default; the decision router named no coworker on your roster",
+            "off-roster",
+          );
+        }
+        if (answer.confidence < minConfidence) {
+          return fallback(
+            "sent to your default; the decision router was not confident",
+            "unconfident",
+          );
+        }
+        return {
+          agentId: decided.id,
+          name: decided.name,
+          reason: `the decision model matched ${decided.name}`,
+          fallback: false,
+          undecided: null,
+        };
+      }
+
       let raw: string;
       try {
         raw = await this._complete(text, candidates);
@@ -294,7 +357,7 @@ export function createIntentRouter(deps: {
       }
       const confidence =
         typeof parsed.confidence === "number" ? parsed.confidence : 0;
-      if (confidence < MIN_CONFIDENCE) {
+      if (confidence < minConfidence) {
         return fallback(
           "sent to your default; no specialist was a confident match",
           "unconfident",
@@ -314,6 +377,8 @@ export function createIntentRouter(deps: {
         undecided: null,
       };
     },
+
+    _decide: deps.decide,
 
     // Split out so the prompt-build + call is one seam the tests can leave alone.
     async _complete(

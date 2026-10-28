@@ -29,6 +29,7 @@ import { parametersFor } from "@openbot/toolkit/granted-tool";
 import { HeadlessToolsMiddleware } from "@openbot/toolkit/headless-tools";
 import { sanitizeSeededHistory } from "@openbot/toolkit/history-sanitize";
 import { executeNativeApprovalTool } from "@openbot/toolkit/native-approval";
+import type { ThreadLock } from "@openbot/toolkit/ports";
 import { historyOrEmpty } from "@openbot/toolkit/thread-history";
 import { defer, from, switchMap } from "rxjs";
 import { z } from "zod";
@@ -87,17 +88,17 @@ import { createLocalThreadLock } from "./threads/local-lock";
 import { UNTRUSTED_GUIDANCE } from "./untrusted-content";
 
 /**
- * The CopilotKit runtime, always in Intelligence mode.
+ * The CopilotKit runtime, in Intelligence mode or in local mode.
  *
  * Package-declared built-in Bots run as CopilotKit `BuiltInAgent` instances. External Bots are
  * reached over AG-UI as `HttpAgent` instances, so anything that speaks the protocol remains a Bot
  * with no framework adapter here: LangGraph, Pydantic-AI, CrewAI, Mastra, ADK, or a hand-written
  * server.
  *
- * There is no SSE branch. Intelligence is a requirement of the product, not a tier: it owns
- * durable threads, memory and learning, and a deployment without it silently forgets every
- * conversation. config.ts refuses to boot without the full contract, so by the time this runs the
- * settings are present and this file has one mode.
+ * Intelligence mode uses CopilotKit's durable threads, memory and learning; config.ts refuses to
+ * boot without the full contract. Local mode uses `CopilotSseRuntime` and a Postgres-backed runner
+ * for the same thread routes, with no Intelligence call. The branch is explicit in
+ * `createCopilotRuntime`; this file does not silently fall back from one mode to the other.
  */
 
 /** Resolve the signed-in person for a request. Threads and memory are scoped to whoever this returns. */
@@ -1954,11 +1955,10 @@ export function mountCopilotRuntime(
 /**
  * The same runtime surface without CopilotKit Intelligence.
  *
- * `CopilotSseRuntime` keeps the run, connect, stop and agent routes, and the in-memory runner
- * keeps the thread routes the React packages already call. That is enough for the same UI. The
- * limitation is stated rather than hidden: threads and messages live in this process, so a restart
- * forgets them. The Postgres runner in the migration plan replaces the runner without changing any
- * route above it.
+ * `CopilotSseRuntime` keeps the run, connect, stop and agent routes, and the local runner keeps the
+ * thread routes the React packages already call. The default is still in memory for tests and for
+ * callers that have no database; the server passes a `PostgresAgentRunner` instead, so a restart
+ * keeps the conversation and a second process sees the same lock.
  */
 function mountLocalCopilotRuntime(
   config: DeploymentConfig,
@@ -1972,10 +1972,15 @@ function mountLocalCopilotRuntime(
       busy: boolean;
     }) => void | Promise<void>;
     runner?: AgentRunner;
+    /** The handoff/routine lock, which can outlive this process when it is database-backed. */
+    threadLock?: ThreadLock;
+    /** Durable history, checked against the actor. Falls back to the runner's cache. */
+    readHistory?: (threadId: string, actorId: string) => Promise<Message[]>;
   } = {},
 ) {
   const { basePath = "/api/copilotkit", onRunBusy } = options;
   const runner = options.runner ?? new InMemoryAgentRunner();
+  const threadLock = options.threadLock ?? createLocalThreadLock({ onRunBusy });
 
   const agentFor = async (input: {
     actor: AgentActor;
@@ -2016,9 +2021,12 @@ function mountLocalCopilotRuntime(
         "This deployment has no Intelligence runner connection; use the local runner.",
       );
     },
-    threadLock: createLocalThreadLock({ onRunBusy }),
+    threadLock,
     agentFor,
     history: async (input: { threadId: string; actorId: string }) => {
+      if (options.readHistory) {
+        return options.readHistory(input.threadId, input.actorId);
+      }
       if (!supportsLocalThreadEndpoints(runner)) return [];
       return runner.getThreadMessages(input.threadId);
     },

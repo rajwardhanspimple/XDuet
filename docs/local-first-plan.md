@@ -2,25 +2,28 @@
 
 **Goal:** remove the CopilotKit Intelligence subscription and every CopilotKit cloud call, keep the platform, data, threads, memory, approvals, computers, and UI local, and use external APIs only for models.
 
-**Status (2026-10-28):** Target A is implemented for a single-user local install. The server runs the MIT runtime in local SSE mode, Mercury 3 handles generation and tools, and the decision client handles tool selection and safety review. The remaining gap is durability: threads live in the runtime's `InMemoryAgentRunner` and are forgotten on restart.
+**Status (2026-10-28):** Target A is implemented and verified for a single-user local install. The server runs the MIT runtime in local SSE mode; Postgres now holds threads, runs, events, messages, state, and locks; Mercury 3 handles generation and tools; and the decision model handles tool selection, safety review, routing, and triage. A conversation was sent, the server was restarted, and the same conversation history replayed in the UI. A due routine fired through the local worker and appended its turn to the same durable thread.
 
 **Implemented today**
 
 - `OPENBOT_LOCAL_MODE=true` removes the Intelligence requirement; local setup, the self-host banner, and `start.sh` understand local mode.
-- `CopilotSseRuntime` + `InMemoryAgentRunner` serve `/api/copilotkit/*`; the app's existing UI and tool cards work unchanged.
+- `PostgresAgentRunner` persists every run, AG-UI event, message snapshot, state snapshot, and thread lease. Restart recovery closes interrupted runs, clears stale locks, and reloads the runtime's synchronous thread read model from Postgres. Message snapshots carry their array position, so a restart does not reorder a conversation.
+- The runtime's local thread endpoints keep the same synchronous contract the app already calls; Postgres is the source of truth, the in-process cache is the read model, and `readThreadMessages` checks ownership for history reads. A single local API process is the supported shape.
+- A routine fired through the worker and appended its turn to the same durable thread. Handoff uses `copilotRuntime.runner`, `copilotRuntime.history`, and the durable `threadLock`; group chat uses the same `routineIntelligence` + `routineAgentRunner` pair.
+- `bun run local:up`, `bun run local:status`, and `bun run local:down` start and stop the agent computer, server, worker, and app without Docker. Postgres is the only external local prerequisite.
 - Mercury 3 is forced through OpenAI-compatible Chat Completions (not `/v1/responses`) for chat, streaming, JSON mode, and tool calls.
 - A typed decision client supports `mercury-3` (today's compatibility path), `mercury-decide`, `opendecider`, and `laya`.
-- Decision-backed tool selection fails open; decision-backed safety review fails closed and can only add approval or hand-off.
+- Decision-backed tool selection fails open; decision-backed safety review fails closed and can only add approval or hand-off. Decision-backed routing is authoritative over the roster and falls back to the default coworker; decision-backed triage is a typed `noul` and fails closed to "unsorted" rather than guessing "can wait".
 - Chat titles in local mode are taken from the person's first line instead of a second model call.
-- Decision, configuration, setup, selection, approval, and title tests pass; server and test typechecks pass.
+- Decision, routing, triage, configuration, setup, selection, approval, title, durable-runner, routine, handoff, and group-chat tests pass; server and test typechecks pass.
 
 **Not implemented yet**
 
-- Postgres durable threads, run replay, and restart recovery (Phase 2).
-- Full routine, handoff, and group-chat parity under the local runner.
-- Routing and triage through the decision model (Phase 6).
-- Safety, tool-selection, routing, and triage evals.
-- Multi-user isolation for the runtime's local thread endpoints.
+- Safety, tool-selection, routing, and triage evals against all four decision providers.
+- Multi-user isolation for the runtime's synchronous thread list endpoints. History reads are owner-checked; the runtime's own list route is still the single-user local shape.
+- Multi-replica realtime (`LISTEN/NOTIFY` or another event bus). The current cache is single-process.
+- Optional `DECISION_SAFETY_ALWAYS` preflight for writes when automatic review is off.
+- A fully offline generative model; Mercury 3 remains an external API.
 
 ---
 
@@ -227,7 +230,7 @@ DECISION_TIMEOUT_MS=2000
 DECISION_TOOL_THRESHOLD=0.35
 DECISION_SAFETY_THRESHOLD=0.5
 DECISION_ROUTING_THRESHOLD=0.6
-DECISION_TRIAGE_THRESHOLD=0.5
+DECISION_TRIAGE_THRESHOLD=0.7
 ```
 
 **Files**
@@ -248,15 +251,13 @@ DECISION_TRIAGE_THRESHOLD=0.5
 
 ## 7. Phase 2 — local durable threads
 
-### 7.1 Why not use the runtime’s local-thread fallback
+### 7.1 How the runtime's synchronous thread endpoints are satisfied
 
-The runtime’s SSE fallback (`InMemoryAgentRunner`) is a **local-development** fallback. Its thread methods are synchronous and in-memory. A Postgres store cannot implement them correctly, and the fallback is not user-scoped.
+The runtime's SSE fallback (`InMemoryAgentRunner`) is a **local-development** fallback. Its thread methods are synchronous and in-memory. A Postgres query cannot answer them, and the fallback is not user-scoped.
 
-So:
+The implemented `PostgresAgentRunner` therefore keeps a **cache** that implements the synchronous `LocalThreadEndpointRunner` contract for the runtime's existing `/threads` routes, while Postgres remains the source of truth. The cache is hydrated once at boot and updated after every run. `run` writes the run, lock and events to Postgres; `connect` replays the hydrated event log and subscribes to the live subject; `isRunning` checks both the live map and the database lease; `stop` aborts the live run in this process.
 
-- Use the runtime only for `run`, `connect`, `stop`, and `isRunning`.
-- Implement async thread HTTP routes ourselves.
-- Intercept `/api/copilotkit/threads/*` before the runtime handler.
+This is the single-process local shape. A multi-user or multi-replica deployment replaces the synchronous cache with custom async thread routes and `LISTEN/NOTIFY`; the schema and `run`/`connect`/`isRunning` half stay the same.
 - Do not expose the runtime’s global `threads/clear`.
 
 ### 7.2 Database schema
@@ -328,7 +329,7 @@ Indexes:
 
 ### 7.3 `PostgresAgentRunner`
 
-New file: `openbot/server/src/threads/postgres-runner.ts`
+Implemented in `openbot/server/src/threads/postgres-runner.ts`.
 
 ```ts
 class PostgresAgentRunner extends AgentRunner {
@@ -339,28 +340,28 @@ class PostgresAgentRunner extends AgentRunner {
 }
 ```
 
-Behavior:
+Implemented behavior:
 
-- Acquire the thread lock with `insert ... on conflict ... where expires_at < now()` or `select ... for update skip locked`.
+- Acquire the thread lease with `insert ... on conflict ... where expires_at <= now() or run_id = excluded.run_id`. The second clause lets the handoff lock and the runner share the same run id without a false conflict.
 - Reject a second concurrent run on the same thread.
 - Insert a `running` run row.
 - Run the agent and stream events.
-- Persist each event as it arrives; batch writes for throughput.
-- On finalize, persist `agent.messages` and the compacted event list.
-- Set `finished` / `failed` / `stopped`.
-- Release the lock in `finally`.
-- Heartbeat the lock while the run is active.
-- On `connect`, replay persisted events; if the run is still active, subscribe to the local event bus.
-- On startup, mark orphaned `running` runs as `failed` after the lock TTL.
+- Append every AG-UI event to `agent_thread_events` through a per-run write chain; a failed write marks the run failed.
+- On finalize, replace the thread's message snapshot with `agent.messages`, store the last state snapshot, and write `finished` / `failed` / `stopped`.
+- Release the lock in the finalize transaction and heartbeat it while the run is active.
+- On `connect`, replay compacted persisted events; if the run is still active in this process, subscribe to its `ReplaySubject`.
+- On startup, mark every `running` run as failed and delete every lock. This is correct for the supported single-process local shape; the lease TTL is the recovery story if a second process is ever allowed.
 
 Event bus:
 
-- Single-node local: in-process `Subject` per thread.
-- Multi-node: Postgres `LISTEN/NOTIFY` or Redis. Interface it so local is the default.
+- Single-node local: in-process `ReplaySubject` per thread, implemented.
+- Multi-node: Postgres `LISTEN/NOTIFY` or Redis. Not implemented; the cache and live map are process-local.
 
 ### 7.4 Thread HTTP routes
 
-Add before the runtime mount in `openbot/server/src/app.ts`:
+The runtime's own synchronous `/api/copilotkit/threads/*` routes are what the app calls today, backed by the `PostgresAgentRunner` cache. They are the single-user local shape.
+
+These async, ownership-scoped routes are the next step for multi-user or multi-replica deployments:
 
 - `GET /api/copilotkit/threads?agentId=...` — list the signed-in person’s threads.
 - `GET /api/copilotkit/threads/:threadId/messages` — latest message snapshot.
@@ -369,6 +370,8 @@ Add before the runtime mount in `openbot/server/src/app.ts`:
 - `PATCH /api/copilotkit/threads/:threadId` — rename/archive.
 - `DELETE /api/copilotkit/threads/:threadId` — soft-delete.
 - `POST /api/copilotkit/threads/:threadId/subscribe` — optional live updates.
+
+`GET /api/threads/:id` now answers from Postgres in local mode, so the browser can verify a remembered thread without Intelligence.
 
 Every route resolves the actor from the session and checks `agent_threads.user_id`. A thread id is not authorization.
 
@@ -663,24 +666,26 @@ Measure:
 
 ---
 
-## 11. Phase 6 — routing and triage (optional, same adapter)
+## 11. Phase 6 — routing and triage (implemented)
 
 ### Routing
 
-- `routing/model.ts` → decision-backed `choice` over the roster.
+- `routing/classify.ts` now takes an optional typed decision dependency; `decision/routing.ts` asks a `choice` over the roster.
 - `state` = message + roster role descriptions + reachable systems.
-- `choice` = agent id; `confidence` = decision confidence.
-- Below `DECISION_ROUTING_THRESHOLD` → existing default coworker fallback.
-- Reason = template from the chosen coworker’s role description.
-- Failure → existing default; never throw.
+- `choice` = agent id; `confidence` = the chosen option’s probability.
+- Below `DECISION_ROUTING_THRESHOLD` → existing default coworker fallback, recorded as `unconfident`.
+- Off-roster, malformed, unreachable, or absent answers → existing default; the router never throws.
+- Reason = `the decision model matched <coworker>`; the audit trail keeps the fallback kind in `undecided`.
+- Live check: “move my 3pm meeting to Thursday afternoon” chose the calendar coworker at 0.95 confidence.
 
 ### Triage
 
-- `openduet/triage.ts` → decision-backed `noul` “Does this need the person today?”
-- Use a conservative threshold and fall back to Mercury 3 when uncertain.
-- Reason: template, or Mercury 3 for the few `needs_you` messages.
-- Run `evals/triage` against Mercury 3, OpenDecider, Laya, and Mercury Decide before switching.
-- Do not let a small model silently mark high-stakes mail as “can wait” with no fallback.
+- `openduet/triage.ts` asks a typed `noul`: “does this message need this person to personally decide, reply, approve, pay, sign or act soon?”
+- `decision/triage.ts` compares the chosen outcome’s probability with `DECISION_TRIAGE_THRESHOLD`. Below it, the message is unsorted; it is never silently marked “can wait.”
+- Deterministic rules still decide the obvious mail first; the decision model only sees what they leave.
+- Reason = a deterministic template. The model returns probabilities, not prose.
+- Live check: an invoice approval request returned `needs_you` and was recorded as `decision:mercury-3`.
+- Still required before switching providers: run `evals/triage` against Mercury 3, OpenDecider, Laya, and Mercury Decide. A small model must not silently mark high-stakes mail as “can wait.”
 
 ---
 
@@ -722,9 +727,9 @@ Estimate: 4–8 weeks for a minimal parity cut; longer for all channels, interru
 ## 13. Configuration summary
 
 ```env
-# Local mode
+# Local mode. Durable threads are always Postgres in this mode; there is no store flag.
 OPENBOT_LOCAL_MODE=true
-# OPENBOT_THREAD_STORE=postgres   # planned; today threads are in-memory and restart-forgotten
+DATABASE_URL=postgres://openbot@127.0.0.1:5433/openduet_local
 
 # Main model: Mercury 3
 OPENAI_BASE_URL=https://api.inceptionlabs.ai/v1
@@ -742,8 +747,9 @@ DECISION_TIMEOUT_MS=2000
 DECISION_TOOL_THRESHOLD=0.35
 DECISION_SAFETY_THRESHOLD=0.5
 DECISION_ROUTING_THRESHOLD=0.6
-DECISION_TRIAGE_THRESHOLD=0.5
-DECISION_SAFETY_ALWAYS=true
+DECISION_TRIAGE_THRESHOLD=0.7
+# Planned, not read today: run safety review even when automatic review is off.
+# DECISION_SAFETY_ALWAYS=true
 
 # No CopilotKit Intelligence
 # INTELLIGENCE_API_URL=
@@ -770,17 +776,25 @@ DO_NOT_TRACK=1
 
 ### Integration
 
-- Run → persist → restart → reconnect.
+Implemented and covered:
+
+- Run → persist → restart → reconnect (messages, events, state, run status), including message order across multiple turns.
 - Concurrent run rejection.
-- Stop mid-run.
-- Orphaned run recovery.
-- Multi-user isolation.
-- Routine headless turn.
-- Bot-to-bot handoff.
+- Stop mid-run and lock release.
+- Failed run persistence without erasing the previous message snapshot.
+- Orphaned `running` run recovery and stale-lock clearing at boot.
+- Routine headless turn through the worker and the server's durable runner.
+- Bot-to-bot handoff using `copilotRuntime.runner`, `copilotRuntime.history` and the durable thread lock.
+- Group-chat turns using the same `routineIntelligence` + `routineAgentRunner` pair.
+- Decision routing and triage, including low-confidence/off-roster/failure fallbacks.
+
+Still to add:
+
+- Multi-user isolation for the runtime's synchronous thread list.
 - Approval resume after restart.
 - Attachments across restart.
 - Memory local-only.
-- No Intelligence variables anywhere.
+- No Intelligence variables anywhere (the build still carries the Intelligence mode).
 
 ### Evals
 

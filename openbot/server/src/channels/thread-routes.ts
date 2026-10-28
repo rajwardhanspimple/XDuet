@@ -16,14 +16,15 @@ import type { ThreadIdentity } from "./thread-identity";
  */
 
 /**
- * Answers whether Intelligence still has a given thread for a given person.
+ * Answers whether the backend still has a given thread for a given person.
  *
  * Two outcomes only, and deliberately not a third: `"known"` means the thread is there, `"unknown"`
- * means Intelligence has clearly said it is not. A check that failed to get either answer — a
- * timeout, a 5xx, a client that was never configured right — is not a value this type can hold; the
- * function that implements it throws instead, so `GET /:threadId` below can tell "this thread is
- * gone" from "this thread could not be checked" and answer 502 for the second rather than quietly
- * reporting it as gone.
+ * means the backend has clearly said it is not. Intelligence mode reads this from Intelligence;
+ * local mode reads it from the Postgres runner, scoped to the actor. A check that failed to get
+ * either answer — a timeout, a 5xx, a client that was never configured right — is not a value this
+ * type can hold; the function that implements it throws instead, so `GET /:threadId` below can tell
+ * "this thread is gone" from "this thread could not be checked" and answer 502 for the second rather
+ * than quietly reporting it as gone.
  */
 export type ThreadReader = (
   threadId: string,
@@ -44,10 +45,10 @@ export function createThreadRoutes(
   identity: ThreadIdentity,
   requireUser: MiddlewareHandler<{ Variables: AppVariables }>,
   /**
-   * Absent when this deployment has no way to ask Intelligence about a thread — no client, or a
-   * caller that chose not to build one. `GET /:threadId` is then not registered at all, rather than
-   * registered and answering 502 to everyone: a route that cannot possibly succeed should not exist.
-   * `POST /mint` needs no reader and is unaffected either way.
+   * Absent when this deployment has no way to ask about a thread — no Intelligence client, no local
+   * runner, or a caller that chose not to build one. `GET /:threadId` is then not registered at all,
+   * rather than registered and answering 502 to everyone: a route that cannot possibly succeed
+   * should not exist. `POST /mint` needs no reader and is unaffected either way.
    */
   readThread?: ThreadReader,
 ) {
@@ -60,9 +61,9 @@ export function createThreadRoutes(
   if (readThread) {
     /*
      * What this buys the browser: proof, before it sends a single message, that a thread id it
-     * remembers from last time is one Intelligence still has. If the answer is no, it can start a
+     * remembers from last time is one the backend still has. If the answer is no, it can start a
      * fresh thread knowing there is provably nothing left in the old one to lose. Without this route
-     * that is not what happens — the browser sends anyway, Intelligence silently starts a new, empty
+     * that is not what happens — the browser sends anyway, the runtime silently starts a new, empty
      * thread under the remembered id, and the person is answered as though the conversation were new
      * with nothing on screen to say their history is gone.
      */
@@ -84,7 +85,7 @@ export function createThreadRoutes(
         console.error(
           JSON.stringify({
             type: "thread-status-check-failed",
-            note: "Could not determine whether Intelligence still has this thread.",
+            note: "Could not determine whether this thread still exists.",
           }),
         );
         return context.json({ error: "Could not check thread status." }, 502);

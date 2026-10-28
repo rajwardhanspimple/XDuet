@@ -113,7 +113,7 @@ export function decisionConfigFromEnvironment(
       triageThreshold: numberFrom(
         environment,
         "DECISION_TRIAGE_THRESHOLD",
-        0.5,
+        0.7,
       ),
     };
   }
@@ -148,7 +148,7 @@ export function decisionConfigFromEnvironment(
       triageThreshold: numberFrom(
         environment,
         "DECISION_TRIAGE_THRESHOLD",
-        0.5,
+        0.7,
       ),
     };
   }
@@ -170,7 +170,7 @@ export function decisionConfigFromEnvironment(
       "DECISION_ROUTING_THRESHOLD",
       0.6,
     ),
-    triageThreshold: numberFrom(environment, "DECISION_TRIAGE_THRESHOLD", 0.5),
+    triageThreshold: numberFrom(environment, "DECISION_TRIAGE_THRESHOLD", 0.7),
   };
 }
 

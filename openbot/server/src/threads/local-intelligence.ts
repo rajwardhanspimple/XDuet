@@ -1,6 +1,6 @@
-import type { InMemoryAgentRunner } from "@copilotkit/runtime/v2";
 import type { Message } from "@ag-ui/client";
 import type { IntelligenceLike } from "@openbot/toolkit/run-turn";
+import type { PostgresAgentRunner } from "./postgres-runner";
 
 type ThreadHistoryMessage = {
   id: string;
@@ -13,51 +13,54 @@ type ThreadHistoryMessage = {
 
 /**
  * The small part of the Intelligence client a headless turn actually calls, answered from the
- * local in-memory runner.
+ * durable local runner.
  *
  * This is the bridge that keeps routines, group conversations, responsibilities and handoffs
- * working while the platform runs without Intelligence. It is honest about its limits: thread
- * history and locks live in this process, so a restart forgets conversations and a second replica
- * cannot see this one's locks. The durable Postgres runner replaces both.
+ * working while the platform runs without Intelligence. Unlike the in-memory version it replaced,
+ * history and locks are in Postgres: a restart does not forget a routine's conversation, and a
+ * second process cannot take a thread this one is running.
  */
 export function createLocalIntelligence(
-  runner: InMemoryAgentRunner,
+  runner: PostgresAgentRunner,
 ): IntelligenceLike {
-  const locks = new Map<string, { runId: string; expiresAt: number }>();
-  const ttlMs = 120_000;
-
-  const expired = (threadId: string): boolean => {
-    const lock = locks.get(threadId);
-    if (lock && lock.expiresAt <= Date.now()) {
-      locks.delete(threadId);
-      return true;
-    }
-    return false;
-  };
-
   return {
-    getOrCreateThread: async () => ({}),
-    getThreadMessages: async ({ threadId }) => ({
-      messages: runner.getThreadMessages(threadId).map(toThreadHistoryMessage),
+    getOrCreateThread: async ({ threadId, userId, agentId }) => {
+      await runner.ensureThread({ threadId, userId, agentId });
+      return {};
+    },
+    getThreadMessages: async ({ threadId, userId }) => ({
+      messages: (await runner.readThreadMessages(threadId, userId)).map(
+        toThreadHistoryMessage,
+      ),
     }),
-    ɵacquireThreadLock: async ({ threadId, runId }) => {
-      expired(threadId);
-      if (locks.has(threadId)) throw busy();
-      locks.set(threadId, { runId, expiresAt: Date.now() + ttlMs });
+    ɵacquireThreadLock: async ({
+      threadId,
+      runId,
+      userId,
+      agentId,
+      ttlSeconds,
+    }) => {
+      const acquired = await runner.acquireThreadLock({
+        threadId,
+        runId,
+        userId,
+        agentId,
+        ...(ttlSeconds ? { ttlMs: ttlSeconds * 1_000 } : {}),
+      });
+      if (!acquired) throw busy();
       return { threadId, runId };
     },
-    ɵrenewThreadLock: async ({ threadId, runId }) => {
-      const lock = locks.get(threadId);
-      if (!lock || lock.runId !== runId || lock.expiresAt <= Date.now()) {
-        locks.delete(threadId);
-        throw busy();
-      }
-      lock.expiresAt = Date.now() + ttlMs;
+    ɵrenewThreadLock: async ({ threadId, runId, ttlSeconds }) => {
+      const renewed = await runner.renewThreadLock({
+        threadId,
+        runId,
+        ...(ttlSeconds ? { ttlMs: ttlSeconds * 1_000 } : {}),
+      });
+      if (!renewed) throw busy();
       return { threadId, runId };
     },
     ɵcleanupThreadLock: async ({ threadId, runId }) => {
-      const lock = locks.get(threadId);
-      if (lock?.runId === runId) locks.delete(threadId);
+      await runner.releaseThreadLock({ threadId, runId });
     },
   };
 }

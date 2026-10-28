@@ -1,9 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { createDecisionClient } from "../src/decision/client";
 import { decisionConfigFromEnvironment } from "../src/decision/config";
+import { createDecisionRouter } from "../src/decision/routing";
 import { createDecisionReviewer } from "../src/decision/safety";
 import { createDecisionToolSelector } from "../src/decision/tool-selection";
+import { createDecisionTriage } from "../src/decision/triage";
 import type { DecisionAnswers, DecisionClient } from "../src/decision/types";
+import {
+  TriageAnswerError,
+  type TriageMessage,
+  triage,
+} from "../src/openduet/triage";
+import { createIntentRouter } from "../src/routing/classify";
 
 const skills = [
   {
@@ -257,5 +265,196 @@ describe("decision client construction", () => {
     const client = createDecisionClient(config);
     expect(client.provider).toBe("laya");
     expect(client.model).toBe("laya");
+  });
+});
+
+describe("decision-backed routing", () => {
+  const candidates = [
+    {
+      id: "calendar",
+      name: "Calendar",
+      roleDescription: "Meetings, invitations and scheduling.",
+      reaches: ["google-calendar"],
+    },
+    {
+      id: "researcher",
+      name: "Researcher",
+      roleDescription: "Reads documents and answers questions.",
+    },
+  ] as const;
+
+  test("the decision model picks a coworker and the router trusts it", async () => {
+    const router = createIntentRouter({
+      complete: async () => {
+        throw new Error("the prose router must not be called");
+      },
+      decide: createDecisionRouter(
+        clientReturning({
+          coworker: {
+            type: "choice",
+            choice: "calendar",
+            probabilities: { calendar: 0.9, researcher: 0.1 },
+            confidence: 0.9,
+          },
+        }),
+      ),
+      minConfidence: 0.6,
+    });
+
+    await expect(
+      router.route("move my 3pm to Thursday", candidates, "researcher"),
+    ).resolves.toMatchObject({
+      agentId: "calendar",
+      name: "Calendar",
+      fallback: false,
+      undecided: null,
+    });
+  });
+
+  test("a low-confidence decision falls back to the default", async () => {
+    const router = createIntentRouter({
+      complete: async () => {
+        throw new Error("the prose router must not be called");
+      },
+      decide: createDecisionRouter(
+        clientReturning({
+          coworker: {
+            type: "choice",
+            choice: "calendar",
+            probabilities: { calendar: 0.51, researcher: 0.49 },
+            confidence: 0.51,
+          },
+        }),
+      ),
+      minConfidence: 0.6,
+    });
+
+    await expect(
+      router.route("something ambiguous", candidates, "researcher"),
+    ).resolves.toMatchObject({
+      agentId: "researcher",
+      fallback: true,
+      undecided: "unconfident",
+    });
+  });
+
+  test("an off-roster decision never acts on the named id", async () => {
+    const router = createIntentRouter({
+      complete: async () => {
+        throw new Error("the prose router must not be called");
+      },
+      decide: createDecisionRouter(
+        clientReturning({
+          coworker: {
+            type: "choice",
+            choice: "removed-bot",
+            probabilities: { "removed-bot": 0.99 },
+            confidence: 0.99,
+          },
+        }),
+      ),
+    });
+
+    await expect(
+      router.route("anything", candidates, "researcher"),
+    ).resolves.toMatchObject({
+      agentId: "researcher",
+      fallback: true,
+      undecided: "off-roster",
+    });
+  });
+});
+
+describe("decision-backed triage", () => {
+  const message: TriageMessage = {
+    id: "m1",
+    from: "Ada <ada@example.com>",
+    to: ["dev@openbot.local"],
+    cc: [],
+    subject: "Can you approve the invoice before Friday?",
+    date: "2026-10-28T09:00:00.000Z",
+    headers: {},
+    labels: [],
+    body: "The payment run closes Friday. We need your approval.",
+  };
+  const person = {
+    name: "Dev",
+    email: "dev@openbot.local",
+  };
+
+  test("a confident decision becomes the verdict", async () => {
+    const decide = createDecisionTriage(
+      clientReturning({
+        needs_you: { type: "noul", noul: 0.92 },
+      }),
+      0.5,
+    );
+    await expect(
+      triage(message, person, {
+        complete: async () => {
+          throw new Error("the prose triage must not be called");
+        },
+        model: "mercury-3",
+        decide,
+      }),
+    ).resolves.toMatchObject({
+      verdict: "needs_you",
+      decidedBy: "decision:fake",
+    });
+  });
+
+  test("an uncertain decision is a failure, not a quiet can-wait", async () => {
+    const decide = createDecisionTriage(
+      clientReturning({
+        needs_you: { type: "noul", noul: 0.55 },
+      }),
+      0.7,
+    );
+    await expect(
+      triage(message, person, {
+        complete: async () => {
+          throw new Error("the prose triage must not be called");
+        },
+        model: "mercury-3",
+        decide,
+      }),
+    ).rejects.toBeInstanceOf(TriageAnswerError);
+  });
+
+  test("an exactly undecided answer is a failure, even at the lowest threshold", async () => {
+    const decide = createDecisionTriage(
+      clientReturning({
+        needs_you: { type: "noul", noul: 0.5 },
+      }),
+      0.5,
+    );
+    await expect(
+      triage(message, person, {
+        complete: async () => {
+          throw new Error("the prose triage must not be called");
+        },
+        model: "mercury-3",
+        decide,
+      }),
+    ).rejects.toBeInstanceOf(TriageAnswerError);
+  });
+
+  test("a rule still decides before the decision model is asked", async () => {
+    const ruled: TriageMessage = {
+      ...message,
+      labels: ["CATEGORY_PROMOTIONS"],
+      headers: { "List-Unsubscribe": "<https://example.com/unsub>" },
+    };
+    await expect(
+      triage(ruled, person, {
+        complete: async () => {
+          throw new Error("the prose triage must not be called");
+        },
+        model: "mercury-3",
+        decide: async () => {
+          throw new Error("the decision model must not be called");
+        },
+      }),
+    ).resolves.toMatchObject({ decidedBy: "rule:bulk", verdict: "can_wait" });
   });
 });

@@ -1,8 +1,8 @@
+import { MAX_IMAGE_BYTES } from "@openbot/shared/attachments";
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
-import { MAX_IMAGE_BYTES } from "@openbot/shared/attachments";
 import { enterpriseControls } from "./admin/controls";
 import { createEnterpriseGate } from "./admin/gate";
 import { createEnterpriseAdminRoutes } from "./admin/routes";
@@ -25,10 +25,10 @@ import type { ApprovalService } from "./approvals/service";
 import {
   type AuditEventType,
   type AuditInitiator,
-  auditEventsToCsv,
   AuditQueryError,
   type AuditReader,
   type AuditStore,
+  auditEventsToCsv,
   auditQueryFromUrl,
   DEPLOYMENT_INITIATOR,
   readAuditExportRows,
@@ -53,7 +53,10 @@ import type { ChannelEventHub } from "./channels/events";
 import { createGroupRoutes, type GroupConversations } from "./channels/group";
 import { type ChannelStore, createChannelRoutes } from "./channels/routes";
 import type { ThreadIdentity } from "./channels/thread-identity";
-import { createThreadRoutes } from "./channels/thread-routes";
+import {
+  createThreadRoutes,
+  type ThreadReader,
+} from "./channels/thread-routes";
 import { createThreadReader } from "./channels/thread-status";
 import { createComponentRoutes } from "./components/routes";
 import type { SandboxedStore } from "./components/sandboxed";
@@ -93,23 +96,6 @@ import {
 import type { MemoryIngestion } from "./memory/ingestion";
 import { createMemoryRoutes } from "./memory/routes";
 import type { MemoryStore } from "./memory/store";
-import { parsePageLimit } from "./paging";
-import { createPasswordRoutes, createSignInRoutes } from "./passwords/routes";
-import type { SignInService } from "./passwords/service";
-import type { OnboardingStore } from "./people/onboarding";
-import { MAX_PAGE, type PeopleStore } from "./people/store";
-import type { AccountModeSwitch } from "./plugins/account-mode";
-import type { ComposioBroker } from "./plugins/broker";
-import type { BrokerProvider } from "./plugins/access";
-import { createPluginRoutes } from "./plugins/routes";
-import { createSharedUseRoutes } from "./plugins/shared-use-routes";
-import type { SharedUseStore } from "./plugins/shared-use-store";
-import {
-  isDeploymentFault,
-  PluginRefusedError,
-  type PluginStore,
-} from "./plugins/store";
-import { REFUSAL_MARKER, vendorAnswer } from "./plugins/tools";
 import {
   createDuetChannelRoutes,
   type DuetChannelStore,
@@ -122,6 +108,23 @@ import {
   type TaskIntake,
   type TaskStore,
 } from "./openduet/task-store";
+import { parsePageLimit } from "./paging";
+import { createPasswordRoutes, createSignInRoutes } from "./passwords/routes";
+import type { SignInService } from "./passwords/service";
+import type { OnboardingStore } from "./people/onboarding";
+import { MAX_PAGE, type PeopleStore } from "./people/store";
+import type { BrokerProvider } from "./plugins/access";
+import type { AccountModeSwitch } from "./plugins/account-mode";
+import type { ComposioBroker } from "./plugins/broker";
+import { createPluginRoutes } from "./plugins/routes";
+import { createSharedUseRoutes } from "./plugins/shared-use-routes";
+import type { SharedUseStore } from "./plugins/shared-use-store";
+import {
+  isDeploymentFault,
+  PluginRefusedError,
+  type PluginStore,
+} from "./plugins/store";
+import { REFUSAL_MARKER, vendorAnswer } from "./plugins/tools";
 import type { ProactiveEngine } from "./proactive/engine";
 import { createProactiveRoutes } from "./proactive/routes";
 import type { ProactiveStore } from "./proactive/store";
@@ -477,6 +480,14 @@ export function createApp(
   identity?: IdentityStore,
   /** The GitHub sign-in callback, built by the caller; mounted behind requireUser ahead of /api/identity. */
   identityGithubCallback?: Hono<{ Variables: AppVariables }>,
+  /**
+   * A durable thread lookup for a deployment without Intelligence.
+   *
+   * The route it answers (`GET /api/threads/:id`) is how the browser decides whether a remembered
+   * thread still exists before sending into it. Local mode can answer that from Postgres; without
+   * this it would leave the route unregistered and the browser would start fresh.
+   */
+  threadReader?: ThreadReader,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
   /*
@@ -2001,16 +2012,17 @@ export function createApp(
         threadIdentity,
         requireUser,
         /*
-         * Intelligence is the only backend that can answer whether a thread it holds still exists.
-         * Local mode has no such authority, so the route is not registered instead of pretending
-         * every remembered id is gone: `/mint` still works, and the chat starts a fresh thread when
-         * it cannot verify one.
+         * A remembered thread id is only useful if the browser can tell whether the backend still
+         * has it. Intelligence mode asks Intelligence; local mode passes the Postgres runner's
+         * owner check. When neither exists the route is not registered, because answering 502 to
+         * every check would be worse than letting the chat start a verified-fresh thread.
          */
-        config.runtime.mode === "intelligence"
-          ? createThreadReader(
-              createIntelligenceClient(config.runtime.intelligence),
-            )
-          : undefined,
+        threadReader ??
+          (config.runtime.mode === "intelligence"
+            ? createThreadReader(
+                createIntelligenceClient(config.runtime.intelligence),
+              )
+            : undefined),
       ),
     );
   }

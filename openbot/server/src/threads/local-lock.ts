@@ -1,4 +1,5 @@
 import type { ThreadLock } from "@openbot/toolkit/ports";
+import type { PostgresAgentRunner } from "./postgres-runner";
 
 /**
  * The in-process version of a conversation's run lock.
@@ -45,6 +46,64 @@ export function createLocalThreadLock(
       try {
         await options.onRunBusy?.({ threadId, runId, busy: false });
       } catch {}
+    },
+  };
+}
+
+/**
+ * The same lock, held in Postgres instead of a Map.
+ *
+ * Headless turns, handoffs and routines all pass through this. The browser path is covered twice:
+ * the runtime's runner acquires the same row before it starts an agent, and this lock is what the
+ * handoff machinery uses when it calls a Bot without a browser attached. Both use the run id the
+ * caller already chose, so the second acquisition is a refresh rather than a conflict.
+ *
+ * A conflict returns null, which is the port's "somebody else is running here" answer. Every other
+ * database failure is raised: a lock we cannot read is not the same thing as a lock somebody holds.
+ */
+export function createDurableThreadLock(
+  runner: PostgresAgentRunner,
+  options: {
+    onRunBusy?: (input: {
+      threadId: string;
+      runId: string;
+      busy: boolean;
+    }) => void | Promise<void>;
+  } = {},
+): ThreadLock {
+  const announce = async (
+    threadId: string,
+    runId: string,
+    busy: boolean,
+  ): Promise<void> => {
+    try {
+      await options.onRunBusy?.({ threadId, runId, busy });
+    } catch {
+      // The announcement is observability; losing it must not lose the lock.
+    }
+  };
+
+  return {
+    acquire: async ({ threadId, runId, userId, agentId }) => {
+      const acquired = await runner.acquireThreadLock({
+        threadId,
+        runId,
+        userId,
+        agentId,
+      });
+      if (!acquired) return null;
+      await announce(threadId, runId, true);
+      return { runId };
+    },
+    renew: async ({ threadId, runId }) => {
+      const renewed = await runner.renewThreadLock({ threadId, runId });
+      if (!renewed) {
+        throw new Error("The thread lock was lost before the run finished.");
+      }
+    },
+    release: async ({ threadId, runId }) => {
+      await announce(threadId, runId, false);
+      await runner.releaseThreadLock({ threadId, runId });
     },
   };
 }

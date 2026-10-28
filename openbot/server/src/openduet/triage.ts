@@ -43,7 +43,7 @@ export type TriagePerson = {
 export type TriageResult = {
   verdict: TriageVerdict;
   reason: string;
-  /** `rule:<id>` or `model:<model name>`. */
+  /** `rule:<id>`, `model:<model name>`, or `decision:<model name>`. */
   decidedBy: string;
 };
 
@@ -239,16 +239,29 @@ export type Complete = (
 export async function triage(
   message: TriageMessage,
   person: TriagePerson,
-  deps: { complete: Complete; model: string; now?: () => Date },
+  deps: {
+    complete: Complete;
+    model: string;
+    now?: () => Date;
+    /**
+     * The typed decision path. When present it replaces the prose completion, for the same reason
+     * the router does: one calibrated answer, not a second opinion that happens to be cheaper.
+     */
+    decide?: (
+      message: TriageMessage,
+      person: TriagePerson,
+      now: Date,
+      signal?: AbortSignal,
+    ) => Promise<TriageResult>;
+  },
   signal?: AbortSignal,
 ): Promise<TriageResult> {
   const ruled = ruleVerdict(message);
   if (ruled) return ruled;
+  const now = deps.now?.() ?? new Date();
+  if (deps.decide) return deps.decide(message, person, now, signal);
   const answer = parseTriageAnswer(
-    await deps.complete(
-      triagePrompt(message, person, deps.now?.() ?? new Date()),
-      signal,
-    ),
+    await deps.complete(triagePrompt(message, person, now), signal),
   );
   return { ...answer, decidedBy: `model:${deps.model}` };
 }
