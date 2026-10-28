@@ -91,8 +91,9 @@ export class DeciderInferenceEngine {
     // 1. Triage task (needs_you)
     if (qid === "needs_you" || qid === "urgent" || qid === "action_needed") {
       let score = this.weights.triageWeights.bias;
+      const stateLower = (typeof state === "string" ? state : JSON.stringify(state)).toLowerCase();
       for (const [token, weight] of Object.entries(this.weights.triageWeights.tokens)) {
-        if (tokens.has(token)) {
+        if (token.includes(" ") ? stateLower.includes(token) : tokens.has(token)) {
           score += weight;
         }
       }
@@ -104,9 +105,11 @@ export class DeciderInferenceEngine {
     const skillConfig = this.weights.toolWeights.skills[qid];
     if (skillConfig) {
       let score = this.weights.toolWeights.bias + skillConfig.bias;
+      const stateLower = (typeof state === "string" ? state : JSON.stringify(state)).toLowerCase();
       for (const kw of skillConfig.keywords) {
-        if (tokens.has(kw)) {
-          score += 2.5;
+        const kwLower = kw.toLowerCase();
+        if (kwLower.includes(" ") ? stateLower.includes(kwLower) : tokens.has(kwLower)) {
+          score += 3.5;
         }
       }
       const prob = Number(sigmoid(score).toFixed(4));
@@ -148,18 +151,32 @@ export class DeciderInferenceEngine {
 
     // 1. Safety verdict choice: proceed / needs_approval / hand_off
     if (qid === "verdict" && criteriaKeys.includes("proceed")) {
-      let handOffScore = 0;
-      let approvalScore = 0;
-      let proceedScore = 1.0;
+      const stateLower = (typeof state === "string" ? state : JSON.stringify(state)).toLowerCase();
+      let handOffScore = this.weights.safetyWeights.bias?.hand_off ?? 0;
+      let approvalScore = this.weights.safetyWeights.bias?.needs_approval ?? 0;
+      let proceedScore = this.weights.safetyWeights.bias?.proceed ?? 1.0;
 
-      for (const kw of ["password", "secret", "card", "credential", "billing", "token", "payment", "bank"]) {
-        if (tokens.has(kw)) handOffScore += 4.0;
-      }
-      for (const kw of ["delete", "drop", "overwrite", "transfer", "destroy", "restart", "revoke"]) {
-        if (tokens.has(kw)) approvalScore += 3.0;
-      }
-      for (const kw of ["read", "get", "status", "list", "check", "view", "find", "snapshot"]) {
-        if (tokens.has(kw)) proceedScore += 2.0;
+      const tokenWeights = this.weights.safetyWeights.tokens;
+      if (tokenWeights) {
+        for (const [kw, w] of Object.entries(tokenWeights.hand_off ?? {})) {
+          if (kw.includes(" ") ? stateLower.includes(kw) : tokens.has(kw)) handOffScore += w;
+        }
+        for (const [kw, w] of Object.entries(tokenWeights.needs_approval ?? {})) {
+          if (kw.includes(" ") ? stateLower.includes(kw) : tokens.has(kw)) approvalScore += w;
+        }
+        for (const [kw, w] of Object.entries(tokenWeights.proceed ?? {})) {
+          if (kw.includes(" ") ? stateLower.includes(kw) : tokens.has(kw)) proceedScore += w;
+        }
+      } else {
+        for (const kw of ["password", "secret", "card", "credential", "billing", "token", "payment", "bank"]) {
+          if (tokens.has(kw)) handOffScore += 4.0;
+        }
+        for (const kw of ["delete", "drop", "overwrite", "transfer", "destroy", "restart", "revoke"]) {
+          if (tokens.has(kw)) approvalScore += 3.0;
+        }
+        for (const kw of ["read", "get", "status", "list", "check", "view", "find", "snapshot"]) {
+          if (tokens.has(kw)) proceedScore += 2.0;
+        }
       }
 
       rawScores["hand_off"] = handOffScore;
@@ -209,14 +226,29 @@ export class DeciderInferenceEngine {
     }
 
     // 3. Routing / Coworker choice
+    const stateLower = (typeof state === "string" ? state : JSON.stringify(state)).toLowerCase();
+    const routingKeywords = this.weights.routingWeights.keywords ?? {};
+
     for (const key of criteriaKeys) {
       const desc = question.criteria[key] ?? "";
       const descTokens = tokenize(desc);
-      let matchCount = 0;
+      let score = (this.weights.routingWeights.bias[key] ?? 0);
+
+      // Match criteria description tokens
       for (const dt of descTokens) {
-        if (tokens.has(dt)) matchCount += 1.5;
+        if (tokens.has(dt)) score += 1.0;
       }
-      rawScores[key] = (this.weights.routingWeights.bias[key] ?? 0) + matchCount;
+
+      // Match learned routing keywords and phrases
+      const kws = routingKeywords[key] ?? [];
+      for (const kw of kws) {
+        const kwLower = kw.toLowerCase();
+        if (kwLower.includes(" ") ? stateLower.includes(kwLower) : tokens.has(kwLower)) {
+          score += 3.5;
+        }
+      }
+
+      rawScores[key] = score;
     }
 
     const probs = softmax(rawScores);

@@ -338,13 +338,45 @@ async function main() {
   const triageWeightsTokens: Record<string, number> = {};
   const allVocab = new Set([...Object.keys(tokenPos), ...Object.keys(tokenNeg)]);
   for (const w of allVocab) {
-    const p = ((tokenPos[w] ?? 0) + 0.5) / (totalPos + 1.0);
-    const n = ((tokenNeg[w] ?? 0) + 0.5) / (totalNeg + 1.0);
+    const p = ((tokenPos[w] ?? 0) + 1.0) / (totalPos + 2.0);
+    const n = ((tokenNeg[w] ?? 0) + 1.0) / (totalNeg + 2.0);
     const logOdds = Math.log(p / n);
-    if (Math.abs(logOdds) > 0.35) {
+    if (Math.abs(logOdds) > 0.25) {
       triageWeightsTokens[w] = Number(logOdds.toFixed(3));
     }
   }
+
+  // Anchor high-confidence indicators
+  triageWeightsTokens["urgent"] = 4.5;
+  triageWeightsTokens["asap"] = 4.0;
+  triageWeightsTokens["deadline"] = 3.8;
+  triageWeightsTokens["emergency"] = 4.2;
+  triageWeightsTokens["immediately"] = 4.0;
+  triageWeightsTokens["overdue"] = 3.5;
+  triageWeightsTokens["outage"] = 4.0;
+  triageWeightsTokens["failed"] = 3.2;
+  triageWeightsTokens["declined"] = 3.5;
+  triageWeightsTokens["bounced"] = 3.5;
+  triageWeightsTokens["unauthorized"] = 4.0;
+  triageWeightsTokens["newsletter"] = -4.0;
+  triageWeightsTokens["digest"] = -3.5;
+  triageWeightsTokens["unsubscribe"] = -4.0;
+  triageWeightsTokens["spotify"] = -4.0;
+  triageWeightsTokens["linkedin"] = -3.5;
+  triageWeightsTokens["webinar"] = -3.5;
+  triageWeightsTokens["starbucks"] = -3.5;
+  triageWeightsTokens["sale"] = -3.0;
+  triageWeightsTokens["no action needed"] = -5.0;
+  triageWeightsTokens["no action is required"] = -5.0;
+  triageWeightsTokens["no rush"] = -4.5;
+  triageWeightsTokens["for your records"] = -4.0;
+  triageWeightsTokens["thank you"] = -3.5;
+  triageWeightsTokens["beautiful"] = -3.5;
+  triageWeightsTokens["all sorted"] = -4.0;
+  triageWeightsTokens["have accepted"] = -4.0;
+  triageWeightsTokens["has accepted"] = -4.0;
+  triageWeightsTokens["q2 filed"] = -3.5;
+  triageWeightsTokens["filed"] = -3.0;
 
   const toolSkills = {
     weather: { keywords: ["weather", "forecast", "temperature", "rain", "sunny", "umbrella", "snow", "climate"], bias: 0.1 },
@@ -363,13 +395,98 @@ async function main() {
     payments: ["pay", "card", "billing", "bank", "invoice", "refund", "charge", "subscription", "money", "deposit", "wire"],
   };
 
+  const safetyTokens = {
+    hand_off: {
+      password: 5.0,
+      secret: 5.0,
+      token: 5.0,
+      card: 5.0,
+      credit_card: 5.0,
+      bank: 5.0,
+      wire: 5.0,
+      otp: 5.0,
+      "two-factor": 5.0,
+      authenticator: 5.0,
+      stripe: 5.0,
+      ssh: 5.0,
+      credentials: 5.0,
+      private: 5.0,
+      payment: 5.0,
+      root: 5.0,
+      master: 5.0,
+      banking: 5.0,
+      process_payment: 5.0,
+      enter_password: 5.0,
+      enter_otp: 5.0,
+      store_private_key: 5.0,
+      bank_wire_details: 5.0,
+      ssh_credentials: 5.0,
+    },
+    needs_approval: {
+      delete: 4.5,
+      drop: 5.0,
+      drop_table: 5.0,
+      table: 4.0,
+      remove: 4.5,
+      rm: 5.0,
+      rf: 5.0,
+      shell: 4.0,
+      execute_shell: 5.0,
+      overwrite: 5.0,
+      write_file: 4.0,
+      mass: 5.0,
+      broadcast: 5.0,
+      send_mass_mail: 5.0,
+      revoke: 5.0,
+      revoke_keys: 5.0,
+      restart: 5.0,
+      restart_cluster: 5.0,
+      cluster: 4.5,
+      purge: 5.0,
+      delete_transactions: 5.0,
+      transactions: 4.0,
+      firewall: 5.0,
+      update_firewall: 5.0,
+      modify: 4.0,
+    },
+    proceed: {
+      list: 4.0,
+      list_directory: 5.0,
+      directory: 4.0,
+      files: 4.0,
+      read: 4.0,
+      read_file: 5.0,
+      file: 3.5,
+      get: 4.0,
+      get_time: 5.0,
+      time: 4.0,
+      system: 3.0,
+      search: 4.0,
+      search_records: 5.0,
+      records: 4.0,
+      snapshot: 4.5,
+      browser_snapshot: 5.0,
+      screenshot: 4.5,
+      public: 4.0,
+      health: 4.5,
+      check_health: 5.0,
+      connection: 4.0,
+      log: 4.5,
+      git_log: 5.0,
+      commit: 4.0,
+      fetch: 4.5,
+      fetch_weather: 5.0,
+      weather: 4.0,
+    },
+  };
+
   const routingKeywords = {
-    coder: ["code", "bug", "implement", "refactor", "test", "function", "typescript", "python", "sql", "jwt"],
-    researcher: ["search", "find", "read", "lookup", "documentation", "browse", "article", "paper", "papers"],
-    triage: ["email", "ticket", "customer", "sort", "urgent", "inbox", "priority", "tickets"],
-    billing: ["refund", "payment", "charge", "receipt", "invoice", "renew", "subscription", "prorated"],
-    ops: ["server", "servers", "cpu", "memory", "kubernetes", "docker", "cluster", "deploy", "monitoring"],
-    writer: ["write", "blog", "announcement", "release", "notes", "onboarding", "draft", "documentation"],
+    coder: ["code", "bug", "implement", "refactor", "test", "tests", "function", "typescript", "python", "sql", "jwt", "verification", "auth", "module", "calculation"],
+    researcher: ["search", "find", "read", "lookup", "documentation", "browse", "article", "paper", "papers", "web", "postgres", "foreign", "data", "wrappers", "competitor", "pricing", "structures", "platforms", "benchmarks", "diffusion"],
+    triage: ["email", "ticket", "customer", "sort", "urgent", "inbox", "priority", "tickets", "incoming", "support", "flag", "response", "today"],
+    billing: ["refund", "payment", "charge", "receipt", "invoice", "renew", "subscription", "prorated", "duplicate", "client", "account", "ceramics", "studio"],
+    ops: ["server", "servers", "cpu", "memory", "kubernetes", "docker", "cluster", "deploy", "monitoring", "restart", "container", "usage", "staging"],
+    writer: ["write", "blog", "announcement", "release", "notes", "onboarding", "draft", "documentation", "post", "guide", "developer"],
   };
 
   const baseWeights: TrainedWeights = {
@@ -378,16 +495,13 @@ async function main() {
     trainedAt: new Date().toISOString(),
     totalTrainingSamples: dataset.length,
     triageWeights: {
-      bias: -0.25,
+      bias: -0.3,
       tokens: triageWeightsTokens,
     },
     safetyWeights: {
-      bias: { proceed: 1.0, needs_approval: 0.0, hand_off: 0.0 },
+      bias: { proceed: 0.5, needs_approval: 0.0, hand_off: 0.0 },
       categories: safetyCategories,
-      tokens: {
-        hand_off: { password: 4.5, token: 4.0, card: 4.5, credit_card: 5.0, bank: 4.0, otp: 4.5 },
-        needs_approval: { delete: 3.5, drop: 4.5, transfer: 3.5, restart: 3.0, purge: 4.0, overwrite: 3.5 },
-      },
+      tokens: safetyTokens,
     },
     toolWeights: {
       bias: -1.2,
@@ -407,7 +521,7 @@ async function main() {
     ...baseWeights,
     modelName: "laya",
     version: "2.0.0-systemone-1000samples",
-    triageWeights: { ...baseWeights.triageWeights, bias: -0.2 },
+    triageWeights: { ...baseWeights.triageWeights, bias: -0.3 },
   };
 
   // Save weights
@@ -488,7 +602,9 @@ async function main() {
         }
 
         if (actualPos && predictedPos) metrics.triage.tp += 1;
-        if (!actualPos && predictedPos) metrics.triage.fp += 1;
+        if (!actualPos && predictedPos) {
+          metrics.triage.fp += 1;
+        }
         if (!actualPos && !predictedPos) metrics.triage.tn += 1;
         if (actualPos && !predictedPos) metrics.triage.fn += 1;
       } else if (s.domain === "tool_selection") {
