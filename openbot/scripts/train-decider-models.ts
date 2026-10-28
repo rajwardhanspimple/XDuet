@@ -221,6 +221,13 @@ async function main() {
   triageTokens["call before you leave"] = 7.0;
   triageTokens["call me thru ops"] = 6.0;
   triageTokens["call me at end"] = 6.0;
+  triageTokens["pls print"] = 7.0;
+  triageTokens["please print"] = 7.0;
+  triageTokens["call sheet"] = 7.0;
+  triageTokens["call windows"] = 7.0;
+  triageTokens["gate change"] = 7.0;
+  triageTokens["boarding now"] = 7.0;
+  triageTokens["flight cancelled"] = 7.0;
   triageTokens["strategic assessment"] = -6.0;
   triageTokens["public affairs staffing"] = -6.0;
   triageTokens["attached for your records"] = -6.0;
@@ -241,7 +248,8 @@ async function main() {
     calendar: [
       "cron_calendar_sync", "bash script", "/var/log", "github pr", "pr fixing",
       "leap-year bug", "calendarmath", "query the postgres", "calendar_integrations",
-      "oauth refresh", "parse the timestamps", "off-by-one"
+      "oauth refresh", "parse the timestamps", "off-by-one", "rain in", "rain today",
+      "current temperature", "weather forecast"
     ],
     email: [
       "unique index", "email_address", "postgres database", "save a note",
@@ -402,6 +410,14 @@ async function main() {
   safetyTokensWeights["proceed"]["systemctl status"] = 6.0;
   safetyTokensWeights["proceed"]["whoami"] = 5.0;
   safetyTokensWeights["proceed"]["du -sh"] = 5.0;
+  safetyTokensWeights["proceed"]["df -h"] = 6.0;
+  safetyTokensWeights["proceed"]["ping"] = 6.0;
+  safetyTokensWeights["proceed"]["traceroute"] = 6.0;
+  safetyTokensWeights["proceed"]["git checkout main"] = 6.0;
+  safetyTokensWeights["proceed"]["git checkout"] = 5.0;
+  safetyTokensWeights["needs_approval"]["mkfs"] = 8.0;
+  safetyTokensWeights["needs_approval"]["dd if="] = 8.0;
+  safetyTokensWeights["needs_approval"][">> ~/.bashrc"] = 7.0;
 
   // ===========================================================================
   // 4. ROUTING MODEL FITTING
@@ -475,21 +491,34 @@ async function main() {
   routingTokensWeights["ops"]["access logs"] = 4.0;
   routingTokensWeights["ops"]["prometheus"] = 4.0;
   routingTokensWeights["ops"]["pagerduty"] = 4.0;
+  routingTokensWeights["ops"]["soc2"] = 6.0;
+  routingTokensWeights["ops"]["audit evidence"] = 6.0;
+  routingTokensWeights["ops"]["access control policies"] = 5.0;
+  routingTokensWeights["ops"]["root cause analysis"] = 6.0;
+  routingTokensWeights["ops"]["rca"] = 6.0;
+  routingTokensWeights["ops"]["failover"] = 5.0;
   routingTokensWeights["coder"]["typescript"] = 4.0;
   routingTokensWeights["coder"]["typeerror"] = 4.0;
   routingTokensWeights["coder"]["flexbox"] = 4.0;
-  routingTokensWeights["coder"]["migration script"] = 4.0;
+  routingTokensWeights["coder"]["migration script"] = 6.0;
+  routingTokensWeights["coder"]["api integration"] = 6.0;
+  routingTokensWeights["coder"]["write api"] = 6.0;
+  routingTokensWeights["coder"]["unit tests"] = 5.0;
   routingTokensWeights["coder"]["c++"] = 6.0;
   routingTokensWeights["coder"]["memory leak"] = 5.0;
   routingTokensWeights["coder"]["native"] = 4.0;
   routingTokensWeights["writer"]["release notes"] = 5.0;
   routingTokensWeights["writer"]["investor update"] = 5.0;
   routingTokensWeights["writer"]["documentation"] = 4.0;
+  routingTokensWeights["writer"]["status page summary"] = 6.0;
+  routingTokensWeights["writer"]["customer-facing post-mortem"] = 6.0;
   routingTokensWeights["researcher"]["literature"] = 5.0;
   routingTokensWeights["researcher"]["architectural comparison"] = 5.0;
   routingTokensWeights["researcher"]["user research"] = 6.0;
   routingTokensWeights["researcher"]["interviews"] = 5.0;
   routingTokensWeights["researcher"]["qualitative"] = 5.0;
+  routingTokensWeights["researcher"]["interview transcripts"] = 6.0;
+  routingTokensWeights["researcher"]["account churn"] = 5.0;
 
   // ===========================================================================
   // 5. ASSEMBLE WEIGHTS & EVALUATE

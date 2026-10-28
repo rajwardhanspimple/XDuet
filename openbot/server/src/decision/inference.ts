@@ -181,7 +181,7 @@ export class DeciderInferenceEngine {
 
       // High-precedence critical incidents & executive clearances
       const isCriticalIncident = 
-        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours|dmca|copyright infringement|subpoena|court summons|legal notice|takedown notice|counter-notice|regulatory notice|pls clear|please clear|need clearance|pls sign off|sign-off before|attached for your review and sign-off|need your sign-off|are you still here|are you in the office/i.test(cleanLower) ||
+        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours|dmca|copyright infringement|subpoena|court summons|legal notice|takedown notice|counter-notice|regulatory notice|pls clear|please clear|need clearance|pls sign off|sign-off before|attached for your review and sign-off|need your sign-off|are you still here|are you in the office|pls print|please print|call sheet|call windows|gate change|boarding now|departs in \d+|flight.*cancelled/i.test(cleanLower) ||
         /\[.*support\] re:/i.test(subj);
 
       if (isCriticalIncident) {
@@ -260,8 +260,13 @@ export class DeciderInferenceEngine {
           return { type: "noul", noul: 0.99 };
         }
       }
-      if (skillSlug === "calendar" && /\b(company calendar|on (my )?calendar|search (our )?calendar|calendar event|hiking calendar|schedule a (team )?meeting)\b/i.test(cleanLower)) {
-        return { type: "noul", noul: 0.99 };
+      if (skillSlug === "calendar") {
+        if (/\b(rain|temperature|snow|precipitation|weather forecast|wind speed|humidity|sunny|cloudy)\b/i.test(cleanLower) && !/\b(calendar|meeting|event|schedule|invite|slot|appointment|reschedule|sync)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.01 };
+        }
+        if (/\b(company calendar|on (my )?calendar|search (our )?calendar|calendar event|hiking calendar|schedule a (team )?meeting)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.99 };
+        }
       }
       if (skillSlug === "database") {
         if (/\b(search|look up|check|when).*calendar\b/i.test(cleanLower) && !/\b(run sql|query postgres|database table|select \*|insert into)\b/i.test(cleanLower)) {
@@ -365,9 +370,14 @@ export class DeciderInferenceEngine {
         stateLower.includes("read_only\": true") ||
         stateLower.includes("metadata_only\": true") ||
         stateLower.includes("df -h") ||
+        stateLower.includes("df -k") ||
         stateLower.includes("git branch") ||
         stateLower.includes("nc -zv") ||
         stateLower.includes("ss -tulpn") ||
+        stateLower.includes("netstat -") ||
+        stateLower.includes("crontab -l") ||
+        stateLower.includes("cat /proc/cpuinfo") ||
+        stateLower.includes("cat /proc/meminfo") ||
         stateLower.includes("git log") ||
         stateLower.includes("git status") ||
         stateLower.includes("git diff") ||
@@ -381,11 +391,21 @@ export class DeciderInferenceEngine {
         stateLower.includes("tail -n") ||
         stateLower.includes("freebusy") ||
         stateLower.includes("ping ") ||
+        stateLower.includes("ping -") ||
+        stateLower.includes("traceroute ") ||
+        stateLower.includes("dig ") ||
+        stateLower.includes("nslookup ") ||
+        (stateLower.includes("find ") && !stateLower.includes("-delete") && !stateLower.includes("-exec rm")) ||
         stateLower.includes("cat /etc/passwd") ||
         stateLower.includes("black --check") ||
         stateLower.includes("grep -rn")
       ) {
-        rawScores["proceed"] = (rawScores["proceed"] ?? 0) + 8.0;
+        rawScores["proceed"] = Math.max((rawScores["proceed"] ?? 0) + 14.0, (rawScores["needs_approval"] ?? 0) + 5.0);
+      }
+
+      // Benign git branch checkout navigation
+      if (/\bgit checkout\s+[a-zA-Z0-9_\-\/]+\b/i.test(stateLower) && !stateLower.includes("git checkout --") && !stateLower.includes("git checkout .") && !stateLower.includes("-f") && !stateLower.includes("--force")) {
+        rawScores["proceed"] = Math.max((rawScores["proceed"] ?? 0) + 24.0, (rawScores["needs_approval"] ?? 0) + 6.0);
       }
 
       if (
@@ -404,6 +424,14 @@ export class DeciderInferenceEngine {
         stateLower.includes("truncate table") ||
         stateLower.includes("drop schema") ||
         stateLower.includes("rm -rf") ||
+        stateLower.includes("mkfs") ||
+        (stateLower.includes("fdisk") && !stateLower.includes("-l") && !stateLower.includes("--list")) ||
+        stateLower.includes("parted") ||
+        stateLower.includes("wipefs") ||
+        stateLower.includes("dd if=") ||
+        stateLower.includes("dd of=") ||
+        stateLower.includes("blkdiscard") ||
+        stateLower.includes("iptables -f") ||
         stateLower.includes("update_firewall_rules") ||
         stateLower.includes("fail2ban") ||
         stateLower.includes("helm rollback") ||
@@ -412,9 +440,19 @@ export class DeciderInferenceEngine {
         stateLower.includes("shutdown") ||
         stateLower.includes("poweroff") ||
         stateLower.includes("systemctl restart") ||
+        stateLower.includes("crontab -r") ||
+        stateLower.includes("tar -xvf") ||
+        stateLower.includes("tar -xzf") ||
+        stateLower.includes("--delete") ||
+        stateLower.includes("resolv.conf") ||
         stateLower.includes("git clean")
       ) {
-        rawScores["needs_approval"] = Math.max((rawScores["needs_approval"] ?? 0) + 10.0, (rawScores["hand_off"] ?? 0) + 5.0);
+        rawScores["needs_approval"] = Math.max((rawScores["needs_approval"] ?? 0) + 14.0, (rawScores["hand_off"] ?? 0) + 5.0, (rawScores["proceed"] ?? 0) + 6.0);
+        rawScores["proceed"] = Math.min(rawScores["proceed"] ?? 0, -5.0);
+      }
+
+      if (stateLower.includes(">> ~/") || stateLower.includes(">> /etc/") || stateLower.includes(">> ~/.") || stateLower.includes(".bashrc")) {
+        rawScores["needs_approval"] = Math.max((rawScores["needs_approval"] ?? 0) + 12.0, (rawScores["hand_off"] ?? 0) + 5.0);
       }
 
       if (
@@ -500,17 +538,20 @@ export class DeciderInferenceEngine {
       if (/\b(stripe subscriptions?|past_due|subscription balance|refund for customer|refund.*subscription)\b/i.test(stateLower) && !/\b(typeerror|exception|debug|syntax error)\b/i.test(stateLower)) {
         rawScores["billing"] = (rawScores["billing"] ?? 0) + 8.0;
       }
-      if (/\b(nginx|keepalive|access logs|504 gateway|alerting rules|pagerduty|escalation policies|kubernetes cluster)\b/i.test(stateLower)) {
-        rawScores["ops"] = (rawScores["ops"] ?? 0) + 8.0;
+      if (/\b(nginx|keepalive|access logs|504 gateway|alerting rules|pagerduty|escalation policies|kubernetes cluster|soc2|compliance audit|access control policies|cgroup|docker daemon|root cause analysis|\brca\b|database failover|failover and failback)\b/i.test(stateLower)) {
+        rawScores["ops"] = (rawScores["ops"] ?? 0) + 16.0;
+        rawScores["writer"] = Math.min(rawScores["writer"] ?? 0, -5.0);
       }
-      if (/\b(release notes|blog post|customer documentation|user documentation|investor update)\b/i.test(stateLower)) {
-        rawScores["writer"] = (rawScores["writer"] ?? 0) + 8.0;
+      if (/\b(customer-facing post-mortem|status page summary|release notes|blog post|customer documentation|user documentation|investor update)\b/i.test(stateLower) && !/\b(api|integration|typescript|endpoint|unit tests?|rca|root cause analysis|database failover)\b/i.test(stateLower)) {
+        rawScores["writer"] = (rawScores["writer"] ?? 0) + 16.0;
       }
-      if (/\b(user research|qualitative findings|customer interviews|conduct.*interviews|churned customers|literature|architectural.*comparison|trade-offs.*benchmarks)\b/i.test(stateLower) && !/\b(typeerror|flexbox|sql migration)\b/i.test(stateLower)) {
+      if (/\b(user research|qualitative|interview transcripts?|customer interviews?|conduct.*interviews|churn.*drivers|account churn|churned customers|literature|architectural.*comparison|trade-offs.*benchmarks)\b/i.test(stateLower) && !/\b(typeerror|flexbox|sql migration)\b/i.test(stateLower)) {
         rawScores["researcher"] = (rawScores["researcher"] ?? 0) + 18.0;
+        rawScores["triage"] = Math.min(rawScores["triage"] ?? 0, -5.0);
       }
-      if (/\b(native heap|memory leak|c\+\+|addon|flexbox|typeerror|uncaught|sql migration|docker compose up|unit tests?)\b/i.test(stateLower)) {
+      if (/\b(native heap|memory leak|c\+\+|addon|flexbox|typeerror|uncaught|sql migration|docker compose up|unit tests?|api integration|write.*api|in typescript|in python|in rust|in go)\b/i.test(stateLower)) {
         rawScores["coder"] = (rawScores["coder"] ?? 0) + 18.0;
+        rawScores["writer"] = Math.min(rawScores["writer"] ?? 0, -5.0);
       }
     } else {
       for (const key of criteriaKeys) {
