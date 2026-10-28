@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash, createHmac, createSign } from "node:crypto";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -38,10 +38,16 @@ import type { ResponsibilityEvent } from "../src/responsibilities/types";
 const TRIGGER_ID = "5b0f5a36-8f3e-4b0e-9f53-0a4c1d1e2f30";
 const NOW = 1_790_000_000_000;
 
+const opensslCmd =
+  process.platform === "win32" &&
+  existsSync("C:\\Program Files\\Git\\usr\\bin\\openssl.exe")
+    ? "C:\\Program Files\\Git\\usr\\bin\\openssl.exe"
+    : "openssl";
+
 /** Independent implementation of the HMAC, to cross-check ours against OpenSSL's CLI. */
 function opensslHmacHex(secret: string, data: string) {
   const out = spawnSync(
-    "openssl",
+    opensslCmd,
     ["dgst", "-sha256", "-hmac", secret, "-hex"],
     {
       input: data,
@@ -581,7 +587,7 @@ describe("Slack triggers", () => {
 
 describe("inbound email via SES -> SNS", () => {
   const dir = mkdtempSync(join(tmpdir(), "sns-"));
-  spawnSync("openssl", [
+  spawnSync(opensslCmd, [
     "req",
     "-x509",
     "-newkey",

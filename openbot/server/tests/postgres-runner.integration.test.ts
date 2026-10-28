@@ -14,6 +14,7 @@ import {
   agentThreadLocks,
   agentThreadRuns,
   agentThreads,
+  workItems,
 } from "../src/db/schema";
 import { PostgresAgentRunner } from "../src/threads/postgres-runner";
 import { TEST_POOL, testDatabaseUrl } from "./support/database";
@@ -370,9 +371,10 @@ describe("PostgresAgentRunner", () => {
     expect(runner.getThreadState(threadId)).toEqual({ step: 1 });
   });
 
-  test("hydrate closes an orphaned run and clears its lock", async () => {
+  test("hydrate closes an orphaned run, clears its lock, and releases claimed work items", async () => {
     const threadId = randomUUID();
     const runId = randomUUID();
+    const workKey = `test-work-${randomUUID()}`;
     const runner = new PostgresAgentRunner(database);
     await runner.ensureThread({ threadId, userId, agentId: "test-agent" });
     await database.insert(agentThreadRuns).values({
@@ -386,6 +388,13 @@ describe("PostgresAgentRunner", () => {
       runId,
       userId,
       agentId: "test-agent",
+    });
+    await database.insert(workItems).values({
+      kind: "test.item",
+      key: workKey,
+      claimedBy: "dead-worker-pid",
+      leaseUntil: new Date(Date.now() + 600_000),
+      payload: {},
     });
 
     const restarted = new PostgresAgentRunner(database);
@@ -402,6 +411,13 @@ describe("PostgresAgentRunner", () => {
       .from(agentThreadLocks)
       .where(eq(agentThreadLocks.threadId, threadId));
     expect(locks).toEqual([]);
+
+    const [item] = await database
+      .select()
+      .from(workItems)
+      .where(eq(workItems.key, workKey));
+    expect(item?.claimedBy).toBeNull();
+    expect(item?.leaseUntil).toBeNull();
   });
 
   test("stop ends a mid-run turn and releases its lock", async () => {

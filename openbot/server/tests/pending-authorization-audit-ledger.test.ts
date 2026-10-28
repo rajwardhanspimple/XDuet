@@ -386,10 +386,11 @@ function scanTs(): Scanned[] {
     const full = join(REPO, root);
     if (!existsSync(full)) continue;
     for (const file of sourceFiles(full, [".ts", ".tsx"])) {
-      if (!isSource(file) || file.includes("/node_modules/")) continue;
+      const normalizedFile = file.replace(/\\/g, "/");
+      if (!isSource(file) || normalizedFile.includes("/node_modules/")) continue;
       const code = stripComments(readFileSync(file, "utf8"));
       out.push({
-        path: file.slice(REPO.length + 1),
+        path: normalizedFile.slice(REPO.length + 1),
         code,
         defs: definitionsIn(code),
       });

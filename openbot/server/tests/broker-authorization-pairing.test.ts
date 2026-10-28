@@ -226,11 +226,13 @@ describe("authorizations and authorizationId are declared as a pair", () => {
     // non-null `authorizations`, so if it is not here the flow half of this invariant is asserted
     // for nothing but stubs.
     expect(
-      coverage.some((p) => p.startsWith("src/plugins/arcade-adapter.ts")),
+      coverage.some((p) =>
+        p.replace(/\\/g, "/").startsWith("src/plugins/arcade-adapter.ts"),
+      ),
     ).toBe(true);
     expect(
       coverage.some((p) =>
-        p.startsWith("src/plugins/composio-client/consent.ts"),
+        p.replace(/\\/g, "/").startsWith("src/plugins/composio-client/consent.ts"),
       ),
     ).toBe(true);
     // A floor that notices this scan collapsing, not a count to keep up to date; it sits just under

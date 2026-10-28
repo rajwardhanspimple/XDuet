@@ -201,4 +201,66 @@ export function createLearningRuntime(options: {
     ) => client.getInspectorLearning(input),
   };
 }
-export type LearningRuntime = ReturnType<typeof createLearningRuntime>;
+
+export type LocalSkillItem = {
+  slug: string;
+  title: string;
+  summary: string;
+  instructions: string;
+};
+
+export function createLocalLearningRuntime(options: {
+  listSkillsForAgent: (agentId: string) => Promise<LocalSkillItem[]>;
+  readSkillFile?: (slug: string, path: string) => Promise<string>;
+}) {
+  return {
+    acquire: async (
+      agentId: string,
+      signal?: AbortSignal,
+    ): Promise<LearnedSkillInvocation | undefined> => {
+      signal?.throwIfAborted();
+      const skills = await options.listSkillsForAgent(agentId);
+      signal?.throwIfAborted();
+      if (!skills || skills.length === 0) return undefined;
+      const catalog = skills
+        .map(
+          (s) =>
+            `<skill name="${s.slug}">\n<description>${s.summary || s.title}</description>\n</skill>`,
+        )
+        .join("\n");
+      return {
+        catalog,
+        tools: skillTools,
+        execute: async (name: string, args: unknown): Promise<string> => {
+          if (name === "copilotkit_load_skill") {
+            const parsed = skillArgs.parse(args);
+            const found = skills.find((s) => s.slug === parsed.skill_name);
+            if (!found) throw new Error(`Skill ${parsed.skill_name} not found`);
+            return found.instructions;
+          }
+          if (name === "copilotkit_read_skill_file") {
+            const parsed = fileArgs.parse(args);
+            if (options.readSkillFile) {
+              return options.readSkillFile(parsed.skill_name, parsed.path);
+            }
+            throw new Error(
+              `File ${parsed.path} not found in skill ${parsed.skill_name}`,
+            );
+          }
+          throw new Error("That is not a learned Skill tool.");
+        },
+      };
+    },
+    async containerForThread(): Promise<string | undefined> {
+      return undefined;
+    },
+    async status(): Promise<LearningDeliveryStatus> {
+      return { configured: true, initialized: true, stale: false };
+    },
+    inspect: () => {
+      throw new Error("Learning inspector unavailable in local mode");
+    },
+  };
+}
+
+export type LearningRuntime = ReturnType<typeof createLearningRuntime> | ReturnType<typeof createLocalLearningRuntime>;

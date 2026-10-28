@@ -1779,6 +1779,7 @@ export function mountCopilotRuntime(
       runId: string;
       busy: boolean;
     }) => void | Promise<void>;
+    learning?: LearningRuntime;
     learningSettings?: LearningSettingsStore;
     /** The local runner to share with headless turns. Ignored in Intelligence mode. */
     runner?: AgentRunner;
@@ -1971,6 +1972,8 @@ function mountLocalCopilotRuntime(
       runId: string;
       busy: boolean;
     }) => void | Promise<void>;
+    learning?: LearningRuntime;
+    learningSettings?: LearningSettingsStore;
     runner?: AgentRunner;
     /** The handoff/routine lock, which can outlive this process when it is database-backed. */
     threadLock?: ThreadLock;
@@ -1978,7 +1981,7 @@ function mountLocalCopilotRuntime(
     readHistory?: (threadId: string, actorId: string) => Promise<Message[]>;
   } = {},
 ) {
-  const { basePath = "/api/copilotkit", onRunBusy } = options;
+  const { basePath = "/api/copilotkit", onRunBusy, learning } = options;
   const runner = options.runner ?? new InMemoryAgentRunner();
   const threadLock = options.threadLock ?? createLocalThreadLock({ onRunBusy });
 
@@ -2010,7 +2013,7 @@ function mountLocalCopilotRuntime(
 
   return {
     handler: createCopilotHonoHandler({ runtime, basePath }),
-    learning: undefined,
+    learning,
     runner,
     /**
      * No platform runner to reach. A local hop uses the same runner the browser does, which is why

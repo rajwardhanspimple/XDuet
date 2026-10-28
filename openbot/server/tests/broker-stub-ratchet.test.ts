@@ -88,7 +88,7 @@ export function sitesOf(re: RegExp, root = ROOT): string[] {
     const text = stripComments(readFileSync(file, "utf8"));
     for (const match of text.matchAll(re)) {
       out.push(
-        `${file.slice(REPO.length + 1)} :: ${expressionAt(text, match)}`,
+        `${file.slice(REPO.length + 1).replace(/\\/g, "/")} :: ${expressionAt(text, match)}`,
       );
     }
   }

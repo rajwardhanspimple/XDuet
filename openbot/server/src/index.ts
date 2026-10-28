@@ -187,7 +187,10 @@ import {
   keyIntelligence,
   learningSetupInstructions,
 } from "./learning/ensure-container";
-import { clearLearningRevisionFallback } from "./learning/runtime";
+import {
+  clearLearningRevisionFallback,
+  createLocalLearningRuntime,
+} from "./learning/runtime";
 import { createLearningSettingsStore } from "./learning/settings";
 import { createMemoryDefaults } from "./memory/defaults";
 import { createMemoryIngestion } from "./memory/ingestion";
@@ -1937,6 +1940,16 @@ const copilotRuntime = mountCopilotRuntime(
     learningSettings,
     ...(localRunner
       ? {
+          learning: createLocalLearningRuntime({
+            listSkillsForAgent: async (agentId) => {
+              try {
+                const granted = await pluginStore.listForAgent(agentId);
+                return granted.skills;
+              } catch {
+                return [];
+              }
+            },
+          }),
           runner: localRunner,
           threadLock: createDurableThreadLock(localRunner, {
             onRunBusy: (input) =>

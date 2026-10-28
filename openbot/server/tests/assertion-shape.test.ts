@@ -404,10 +404,12 @@ const EXTENSIONS = [".ts", ".tsx"];
 /** Every offence under `root`, with each file named relative to `from`. */
 export function scanTree(root: string, from = root): Offence[] {
   const found: Offence[] = [];
+  const normalizedFrom = from.replace(/\\/g, "/");
   for (const file of sourceFiles(root, EXTENSIONS)) {
-    const named = file.startsWith(`${from}/`)
-      ? file.slice(from.length + 1)
-      : file;
+    const normalizedFile = file.replace(/\\/g, "/");
+    const named = normalizedFile.startsWith(`${normalizedFrom}/`)
+      ? normalizedFile.slice(normalizedFrom.length + 1)
+      : normalizedFile;
     found.push(...offencesIn(named, readFileSync(file, "utf8")));
   }
   return found;
@@ -793,7 +795,7 @@ const ALLOW: Allowed[] = [
   },
   {
     file: "server/tests/tool-selection.integration.test.ts",
-    line: 834,
+    line: 846,
     shape: "b",
     finding: "NEW (round 2 did not find this)",
     why: "expect(run?.forwardedProps?.openbotRun).toBeUndefined();",
@@ -1130,6 +1132,8 @@ test("the fixed counterparts of all six are reported as nothing", () => {
   ).toEqual([]);
   // And the file was genuinely read, rather than missed by the walk.
   expect(
-    sourceFiles(FIXTURES, EXTENSIONS).map((f) => f.slice(FIXTURES.length + 1)),
+    sourceFiles(FIXTURES, EXTENSIONS).map((f) =>
+      f.slice(FIXTURES.length + 1).replace(/\\/g, "/"),
+    ),
   ).toContain("clean/fixed.ts");
 });

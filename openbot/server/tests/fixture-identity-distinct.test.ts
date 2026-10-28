@@ -313,7 +313,10 @@ function scan(): Site[] {
     if (!existsSync(full)) continue;
     for (const file of sourceFiles(full, [".ts", ".tsx"])) {
       out.push(
-        ...pairSites(file.slice(REPO.length + 1), readFileSync(file, "utf8")),
+        ...pairSites(
+          file.slice(REPO.length + 1).replace(/\\/g, "/"),
+          readFileSync(file, "utf8"),
+        ),
       );
     }
   }

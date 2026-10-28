@@ -493,16 +493,28 @@ describe("a built-in Bot", () => {
       .filter((entry) =>
         Array.isArray((entry.body as { tools?: unknown })?.tools),
       );
-    const system = (
+    const lastBody = runs.at(-1)?.body as Record<string, unknown> | undefined;
+    const bodySystem =
+      typeof lastBody?.system === "string"
+        ? lastBody.system
+        : Array.isArray(lastBody?.system)
+          ? JSON.stringify(lastBody.system)
+          : "";
+    const system =
+      bodySystem ||
       (
-        runs.at(-1)?.body as {
-          messages?: { role?: string; content?: unknown }[];
-        }
-      )?.messages ?? []
-    )
-      .filter((message) => message.role === "system")
-      .map((message) => String(message.content))
-      .join("\n");
+        (
+          lastBody as {
+            messages?: { role?: string; content?: unknown }[];
+          }
+        )?.messages ?? []
+      )
+        .filter(
+          (message) =>
+            message.role === "system" || message.role === "developer",
+        )
+        .map((message) => String(message.content))
+        .join("\n");
     /*
      * A Bot told it holds Slack tools it was not offered will promise Slack and then be unable to
      * do it, which reads to the person as the Bot lying rather than as a narrowing. The guidance is

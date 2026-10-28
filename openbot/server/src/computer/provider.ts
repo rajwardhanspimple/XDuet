@@ -125,6 +125,7 @@ export type SharedComputerProviderOptions = {
   token?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  isolation?: "per-bot" | "shared";
 };
 type SharedComputerEntry = {
   botId: string;
@@ -185,7 +186,7 @@ export function createSharedComputerProvider(
 
   return {
     name: "shared",
-    isolation: "shared",
+    isolation: options.isolation ?? "shared",
 
     async locate(_botId: string): Promise<string> {
       return options.baseUrl;
@@ -291,6 +292,7 @@ export function createComputerProvider(
       return createSharedComputerProvider({
         baseUrl: config.baseUrl,
         ...(config.token ? { token: config.token } : {}),
+        ...(config.isolation ? { isolation: config.isolation } : {}),
       });
     case "sandbox":
       /*

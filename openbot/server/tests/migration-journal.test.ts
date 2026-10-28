@@ -496,7 +496,7 @@ const disagreements = (sql: string, before: Snapshot, after: Snapshot) => {
         `the migration creates index "${index}", the snapshot lacks it`,
       );
   for (const index of indexesDropped)
-    if (indexes.has(index))
+    if (indexes.has(index) && !indexesCreated.includes(index))
       problems.push(
         `the migration drops index "${index}", the snapshot still has it`,
       );

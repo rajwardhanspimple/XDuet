@@ -212,7 +212,7 @@ function definitionsOf(names: string[]): string[] {
       if (!isSource(file)) continue;
       for (const { text } of logicalLines(readFileSync(file, "utf8"))) {
         if (patterns.some((re) => re.test(text))) {
-          out.push(file.slice(REPO.length + 1));
+          out.push(file.slice(REPO.length + 1).replace(/\\/g, "/"));
         }
       }
     }
@@ -404,7 +404,7 @@ function spellingsOf(patterns: RegExp[]): string[] {
     const code = stripComments(readFileSync(file, "utf8"));
     for (const { text } of logicalLines(code)) {
       if (patterns.some((re) => re.test(text))) {
-        out.push(file.slice(REPO.length + 1));
+        out.push(file.slice(REPO.length + 1).replace(/\\/g, "/"));
       }
     }
   }
@@ -450,7 +450,7 @@ function defaultTakers(): string[] {
   for (const file of spellingFiles()) {
     const code = stripComments(readFileSync(file, "utf8"));
     if (JOURNAL_CONSUMER.test(code) && !JOURNAL_REFERENCE.test(code)) {
-      out.push(file.slice(REPO.length + 1));
+      out.push(file.slice(REPO.length + 1).replace(/\\/g, "/"));
     }
   }
   return out.sort();

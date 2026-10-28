@@ -434,7 +434,11 @@ test("credential file paths must be absolute", () => {
 test.each(["world-readable", "symlink", "oversized", "missing-quota"] as const)(
   "%s credential files are refused before provider I/O",
   async (kind) => {
-    if (kind === "world-readable" && process.platform === "win32") return;
+    if (
+      (kind === "world-readable" || kind === "symlink") &&
+      process.platform === "win32"
+    )
+      return;
     const f = await fixture(record(), () => new Response("must not be called"));
     if (kind === "world-readable") await chmod(f.file, 0o644);
     if (kind === "symlink") {
@@ -571,6 +575,7 @@ test("a lock timeout returns a retryable failure without consuming a refresh tok
 }, 20000);
 
 test("a redirected lock inode is rejected before a provider exchange", async () => {
+  if (process.platform === "win32") return;
   const f = await fixture(
     record({ expiresAt: 1 }),
     () => new Response("must not be called"),

@@ -18,6 +18,7 @@ import {
   agentThreadMessages,
   agentThreadRuns,
   agentThreads,
+  workItems,
 } from "../db/schema";
 
 /**
@@ -115,6 +116,18 @@ export class PostgresAgentRunner extends AgentRunner {
       })
       .where(eq(agentThreadRuns.status, RUNNING));
     await this.database.delete(agentThreadLocks);
+    await this.database
+      .update(workItems)
+      .set({
+        claimedBy: null,
+        leaseUntil: null,
+      })
+      .where(
+        and(
+          sql`${workItems.claimedBy} is not null`,
+          sql`${workItems.finishedAt} is null`,
+        ),
+      );
 
     const threads = await this.database
       .select()

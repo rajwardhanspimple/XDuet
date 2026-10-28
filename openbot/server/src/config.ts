@@ -77,6 +77,7 @@ export type SharedComputerConfig = {
   token?: string;
   allowPrivateHosts: boolean;
   policy?: ActionPolicy;
+  isolation?: "per-bot" | "shared";
 };
 
 /**
@@ -1229,10 +1230,20 @@ function computerConfig(environment: Environment): ComputerConfig | undefined {
     return undefined;
   }
 
+  const isolationEnv = optional(environment, "COMPUTER_ISOLATION");
+  const isLocalMode = optional(environment, "OPENBOT_LOCAL_MODE") === "true";
+  const isolation: "per-bot" | "shared" | undefined =
+    isolationEnv === "per-bot" || (isLocalMode && isolationEnv !== "shared")
+      ? "per-bot"
+      : isolationEnv === "shared"
+        ? "shared"
+        : undefined;
+
   return {
     provider: "shared",
     baseUrl,
     allowPrivateHosts,
+    ...(isolation ? { isolation } : {}),
     ...(computerToken ? { token: computerToken } : {}),
     ...(policy ? { policy } : {}),
   };
