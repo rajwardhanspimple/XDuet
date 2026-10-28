@@ -24,7 +24,7 @@ export type TrainedWeights = {
   };
   toolWeights: {
     bias: number;
-    skills: Record<string, { keywords: string[]; bias: number }>;
+    skills: Record<string, { keywords: string[]; bias: number; negativeKeywords?: string[] }>;
   };
   routingWeights: {
     bias: Record<string, number>;
@@ -110,6 +110,12 @@ export class DeciderInferenceEngine {
         const kwLower = kw.toLowerCase();
         if (kwLower.includes(" ") ? stateLower.includes(kwLower) : tokens.has(kwLower)) {
           score += 3.5;
+        }
+      }
+      for (const nkw of skillConfig.negativeKeywords ?? []) {
+        const nkwLower = nkw.toLowerCase();
+        if (nkwLower.includes(" ") ? stateLower.includes(nkwLower) : tokens.has(nkwLower)) {
+          score -= 5.0;
         }
       }
       const prob = Number(sigmoid(score).toFixed(4));

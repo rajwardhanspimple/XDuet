@@ -1,7 +1,7 @@
 {
   "modelName": "opendecider-nano",
   "version": "2.0.0-1000samples",
-  "trainedAt": "2026-10-28T18:52:13.212Z",
+  "trainedAt": "2026-10-28T19:02:07.897Z",
   "totalTrainingSamples": 1000,
   "triageWeights": {
     "bias": -0.3,
@@ -691,7 +691,18 @@
       "all sorted": -4,
       "have accepted": -4,
       "has accepted": -4,
-      "q2 filed": -3.5
+      "q2 filed": -3.5,
+      "vip pass": -5,
+      "super-early-bird": -5,
+      "flash sale": -5,
+      "summit": -4.5,
+      "substack": -4.5,
+      "outbound-leadgen": -5,
+      "sdr": -4,
+      "demos": -4,
+      "worth a quick chat": -4.5,
+      "list-unsubscribe": -5,
+      "auto-submitted: auto-generated": -3.5
     }
   },
   "safetyWeights": {
@@ -762,7 +773,22 @@
         "enter_otp": 5,
         "store_private_key": 5,
         "bank_wire_details": 5,
-        "ssh_credentials": 5
+        "ssh_credentials": 5,
+        "cvv": 5,
+        "billing authorization": 5,
+        "submit-payment": 5,
+        "docusign": 5,
+        "legal-binding": 5,
+        "adopt-and-sign": 5,
+        "chief executive officer": 5,
+        "baa": 5,
+        "hipaa": 5,
+        "yubikey": 5,
+        "security key": 5,
+        "pin": 5,
+        "cfo pin": 5,
+        "mfa": 5,
+        "totp": 5
       },
       "needs_approval": {
         "delete": 4.5,
@@ -779,6 +805,9 @@
         "mass": 5,
         "broadcast": 5,
         "send_mass_mail": 5,
+        "send_bulk": 5,
+        "all_active_customers": 5,
+        "bulk": 4.5,
         "revoke": 5,
         "revoke_keys": 5,
         "restart": 5,
@@ -834,7 +863,19 @@
           "sunny",
           "umbrella",
           "snow",
-          "climate"
+          "climate",
+          "precipitation",
+          "radar",
+          "wind",
+          "wind gusts",
+          "gusts"
+        ],
+        "negativeKeywords": [
+          "widget",
+          "analytics_events",
+          "postgresql",
+          "table",
+          "sql"
         ],
         "bias": 0.1
       },
@@ -847,7 +888,15 @@
           "event",
           "appointment",
           "slot",
-          "sync"
+          "sync",
+          "reschedule",
+          "open slot"
+        ],
+        "negativeKeywords": [
+          "cron_calendar_sync",
+          "var/log",
+          "log lines",
+          "script to parse"
         ],
         "bias": 0.1
       },
@@ -860,7 +909,16 @@
           "draft",
           "message",
           "reply",
-          "send mail"
+          "send mail",
+          "search my inbox",
+          "threads"
+        ],
+        "negativeKeywords": [
+          "email_address",
+          "users table",
+          "unique index",
+          "postgres database",
+          "schema"
         ],
         "bias": 0.1
       },
@@ -873,7 +931,16 @@
           "pull request",
           "repository",
           "branch",
-          "clone"
+          "clone",
+          "pull requests",
+          "ci checks",
+          "open-duet"
+        ],
+        "negativeKeywords": [
+          "remember that",
+          "preferred github",
+          "my profile",
+          "note in my"
         ],
         "bias": 0.1
       },
@@ -885,7 +952,20 @@
           "powershell",
           "execute",
           "run command",
-          "sh script"
+          "sh script",
+          "lsof",
+          "kill",
+          "pid",
+          "process",
+          "port 8080",
+          "holding port",
+          "kill the hanging"
+        ],
+        "negativeKeywords": [
+          "building shell",
+          "construction",
+          "facilities team",
+          "4th floor"
         ],
         "bias": 0.1
       },
@@ -898,7 +978,17 @@
           "snapshot",
           "scroll",
           "screen",
-          "inspect"
+          "inspect",
+          "chromium",
+          "export csv",
+          "dom navbar",
+          "modal",
+          "screenshot"
+        ],
+        "negativeKeywords": [
+          "ergonomics assessment",
+          "meeting from friday",
+          "reschedule my computer ergonomics"
         ],
         "bias": 0.1
       },
@@ -911,7 +1001,16 @@
           "schema",
           "postgres",
           "select rows",
-          "index"
+          "index",
+          "mrr",
+          "foreign key",
+          "constraints",
+          "plan_tier"
+        ],
+        "negativeKeywords": [
+          "create a github issue",
+          "github issue in our repo",
+          "titled 'migrate vector"
         ],
         "bias": 0.1
       },
@@ -923,7 +1022,16 @@
           "preference",
           "fact",
           "save note",
-          "memory"
+          "memory",
+          "store a note",
+          "my profile"
+        ],
+        "negativeKeywords": [
+          "free -m",
+          "vmstat",
+          "swap memory",
+          "linux kernel",
+          "terminal to check"
         ],
         "bias": 0.1
       }

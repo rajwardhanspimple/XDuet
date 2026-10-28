@@ -377,16 +377,59 @@ async function main() {
   triageWeightsTokens["has accepted"] = -4.0;
   triageWeightsTokens["q2 filed"] = -3.5;
   triageWeightsTokens["filed"] = -3.0;
+  triageWeightsTokens["vip pass"] = -5.0;
+  triageWeightsTokens["super-early-bird"] = -5.0;
+  triageWeightsTokens["flash sale"] = -5.0;
+  triageWeightsTokens["summit"] = -4.5;
+  triageWeightsTokens["substack"] = -4.5;
+  triageWeightsTokens["outbound-leadgen"] = -5.0;
+  triageWeightsTokens["sdr"] = -4.0;
+  triageWeightsTokens["demos"] = -4.0;
+  triageWeightsTokens["worth a quick chat"] = -4.5;
+  triageWeightsTokens["list-unsubscribe"] = -5.0;
+  triageWeightsTokens["auto-submitted: auto-generated"] = -3.5;
 
   const toolSkills = {
-    weather: { keywords: ["weather", "forecast", "temperature", "rain", "sunny", "umbrella", "snow", "climate"], bias: 0.1 },
-    calendar: { keywords: ["calendar", "schedule", "meeting", "invite", "event", "appointment", "slot", "sync"], bias: 0.1 },
-    email: { keywords: ["email", "mail", "inbox", "compose", "draft", "message", "reply", "send mail"], bias: 0.1 },
-    github: { keywords: ["git", "github", "commit", "pr", "pull request", "repository", "branch", "clone"], bias: 0.1 },
-    shell: { keywords: ["command", "terminal", "bash", "powershell", "execute", "run command", "sh script"], bias: 0.1 },
-    computer: { keywords: ["browser", "click", "navigate", "webpage", "snapshot", "scroll", "screen", "inspect"], bias: 0.1 },
-    database: { keywords: ["database", "sql", "query", "table", "schema", "postgres", "select rows", "index"], bias: 0.1 },
-    memory: { keywords: ["remember", "recall", "note", "preference", "fact", "save note", "memory"], bias: 0.1 },
+    weather: {
+      keywords: ["weather", "forecast", "temperature", "rain", "sunny", "umbrella", "snow", "climate", "precipitation", "radar", "wind", "wind gusts", "gusts"],
+      negativeKeywords: ["widget", "analytics_events", "postgresql", "table", "sql"],
+      bias: 0.1,
+    },
+    calendar: {
+      keywords: ["calendar", "schedule", "meeting", "invite", "event", "appointment", "slot", "sync", "reschedule", "open slot"],
+      negativeKeywords: ["cron_calendar_sync", "var/log", "log lines", "script to parse"],
+      bias: 0.1,
+    },
+    email: {
+      keywords: ["email", "mail", "inbox", "compose", "draft", "message", "reply", "send mail", "search my inbox", "threads"],
+      negativeKeywords: ["email_address", "users table", "unique index", "postgres database", "schema"],
+      bias: 0.1,
+    },
+    github: {
+      keywords: ["git", "github", "commit", "pr", "pull request", "repository", "branch", "clone", "pull requests", "ci checks", "open-duet"],
+      negativeKeywords: ["remember that", "preferred github", "my profile", "note in my"],
+      bias: 0.1,
+    },
+    shell: {
+      keywords: ["command", "terminal", "bash", "powershell", "execute", "run command", "sh script", "lsof", "kill", "pid", "process", "port 8080", "holding port", "kill the hanging"],
+      negativeKeywords: ["building shell", "construction", "facilities team", "4th floor"],
+      bias: 0.1,
+    },
+    computer: {
+      keywords: ["browser", "click", "navigate", "webpage", "snapshot", "scroll", "screen", "inspect", "chromium", "export csv", "dom navbar", "modal", "screenshot"],
+      negativeKeywords: ["ergonomics assessment", "meeting from friday", "reschedule my computer ergonomics"],
+      bias: 0.1,
+    },
+    database: {
+      keywords: ["database", "sql", "query", "table", "schema", "postgres", "select rows", "index", "mrr", "foreign key", "constraints", "plan_tier"],
+      negativeKeywords: ["create a github issue", "github issue in our repo", "titled 'migrate vector"],
+      bias: 0.1,
+    },
+    memory: {
+      keywords: ["remember", "recall", "note", "preference", "fact", "save note", "memory", "store a note", "my profile"],
+      negativeKeywords: ["free -m", "vmstat", "swap memory", "linux kernel", "terminal to check"],
+      bias: 0.1,
+    },
   };
 
   const safetyCategories = {
@@ -421,6 +464,21 @@ async function main() {
       store_private_key: 5.0,
       bank_wire_details: 5.0,
       ssh_credentials: 5.0,
+      cvv: 5.0,
+      "billing authorization": 5.0,
+      "submit-payment": 5.0,
+      docusign: 5.0,
+      "legal-binding": 5.0,
+      "adopt-and-sign": 5.0,
+      "chief executive officer": 5.0,
+      baa: 5.0,
+      hipaa: 5.0,
+      yubikey: 5.0,
+      "security key": 5.0,
+      pin: 5.0,
+      "cfo pin": 5.0,
+      mfa: 5.0,
+      totp: 5.0,
     },
     needs_approval: {
       delete: 4.5,
@@ -437,6 +495,9 @@ async function main() {
       mass: 5.0,
       broadcast: 5.0,
       send_mass_mail: 5.0,
+      send_bulk: 5.0,
+      all_active_customers: 5.0,
+      bulk: 4.5,
       revoke: 5.0,
       revoke_keys: 5.0,
       restart: 5.0,
