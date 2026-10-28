@@ -125,13 +125,55 @@ export class DeciderInferenceEngine {
   ): NoulAnswer {
     // 1. Triage task (needs_you)
     if (qid === "needs_you" || qid === "urgent" || qid === "action_needed") {
+      const stateObj = (typeof state === "object" && state !== null) ? (state as Record<string, any>) : {};
+      const subj = String(stateObj.subject ?? "");
+      const body = String(stateObj.body ?? "");
+      const rawText = typeof state === "string" ? state : `${subj} ${body} ${JSON.stringify(state)}`;
+      const cleanLower = rawText.toLowerCase();
+
+      const headers = (typeof stateObj.headers === "object" && stateObj.headers !== null) ? stateObj.headers : {};
+      const headerLabels = String(headers["X-Gmail-Labels"] ?? headers["x-gmail-labels"] ?? "").toLowerCase();
+
+      const isAccountSuspendedOrDeleted = /account is currently suspended|data will be deleted|account.*deactivation/i.test(cleanLower);
+
+      // High-precedence authentic verification / OTPs
+      const isVerification = 
+        /\b(single-use code|verification code|sign-in code|sign-in verification|one-time verification|login code|confirm your .*email|verify your .*email|verify your identity|google verification code|relay verification code|dial verification code|marsai verification code)\b/i.test(cleanLower) ||
+        (/\b(code is|verification code|security code|your code|sign-in code)\b/i.test(cleanLower) && /\b(valid for|expires in|\d{5,8})\b/i.test(cleanLower));
+
+      if (isVerification || isAccountSuspendedOrDeleted) {
+        return { type: "noul", noul: 0.99 };
+      }
+
+      // High-precedence marketing & promos (unless critical alert)
+      const isMarketingPromo = 
+        headerLabels.includes("category_promotions") ||
+        headerLabels.includes("spam") ||
+        /\b(50% off|flash sale|super-early-bird|early-bird|product hunt|livestream|perk :|weekly digest|weekly ai innovations|newsletter|web drop|primogems|scary story|free tier access expires soon|tokens login to claim|138 million tokens|unlimited ai video|sold out in sf|explore the forge agenda)\b/i.test(cleanLower) ||
+        /your cart is about to expire|no action needed|no action is needed|no action is required|for your records only|fyi only|accepted the invitation|has accepted this invitation|invoice payment confirmation|your invoice is available|receipt for your/i.test(cleanLower) ||
+        /confirm your subscription/i.test(cleanLower);
+
+      if (isMarketingPromo) {
+        if (/unrecogni[sz]ed device|confirm within \d+ hours/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.99 };
+        }
+        return { type: "noul", noul: 0.01 };
+      }
+
+      // High-precedence critical incidents
+      const isCriticalIncident = 
+        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours/i.test(cleanLower) ||
+        /\[.*support\] re:/i.test(subj);
+
+      if (isCriticalIncident) {
+        return { type: "noul", noul: 0.99 };
+      }
+
       let score = this.weights.triageWeights.bias;
       const fullText = typeof state === "string" ? state : JSON.stringify(state);
       const feats = precomputedFeats ? new Set(precomputedFeats) : extractFeatures(fullText);
 
       // Add header features if present
-      const stateObj = (typeof state === "object" && state !== null) ? (state as Record<string, any>) : {};
-      const headers = (typeof stateObj.headers === "object" && stateObj.headers !== null) ? stateObj.headers : {};
       for (const [hk, hv] of Object.entries(headers)) {
         const hkLower = hk.toLowerCase();
         const hvLower = String(hv).toLowerCase();

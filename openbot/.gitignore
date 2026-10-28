@@ -55,3 +55,6 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+
+# Real user personal email dataset
+data/real_gmail/

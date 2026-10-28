@@ -19,6 +19,7 @@ async function main() {
   const specA4000Path = join(root, "data", "laya_spec_a_4000.jsonl");
   const downloadsPath = join(root, "data", "downloads_dataset", "system1_all.jsonl");
   const goldenSeedsPath = join(root, "data", "golden-seeds.jsonl");
+  const realGmailPath = join(root, "data", "real_gmail", "gmail_triage.jsonl");
 
   console.info(`[1/5] Loading datasets from disk...`);
   const raw4000 = (await readFile(specA4000Path, "utf8"))
@@ -38,6 +39,15 @@ async function main() {
     .filter(Boolean)
     .map((l) => JSON.parse(l));
   console.info(`      Loaded ${rawGolden.length} adversarial golden seeds from ${goldenSeedsPath}`);
+
+  let rawRealGmail: any[] = [];
+  try {
+    const raw = await readFile(realGmailPath, "utf8");
+    rawRealGmail = raw.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    console.info(`      Loaded ${rawRealGmail.length} real Gmail triage rows from ${realGmailPath}`);
+  } catch {
+    // optional if missing
+  }
 
   function toSample(s: any): TrainingSample {
     return {
@@ -60,6 +70,7 @@ async function main() {
     ...raw4000.map(toSample),
     ...rawDownloads.map(toSample),
     ...rawGolden.map(toSample),
+    ...rawRealGmail.map(toSample),
   ];
 
   console.info(`[2/5] Compiled unified balanced training corpus across 4 domains...`);
@@ -173,6 +184,22 @@ async function main() {
   triageTokens["termination"] = 4.0;
   triageTokens["outage"] = 4.0;
   triageTokens["emergency"] = 4.2;
+
+  // Real Gmail & Authentication Anchors
+  triageTokens["single-use code"] = 7.0;
+  triageTokens["verification code"] = 7.0;
+  triageTokens["sign-in code"] = 7.0;
+  triageTokens["sign-in verification"] = 7.0;
+  triageTokens["security code"] = 6.0;
+  triageTokens["one-time verification"] = 7.0;
+  triageTokens["trial has been canceled"] = 6.0;
+  triageTokens["payment was unsuccessful"] = 7.0;
+  triageTokens["upgrade your cloudflare tunnel"] = 7.0;
+  triageTokens["security alert"] = 6.0;
+  triageTokens["50% off"] = -6.0;
+  triageTokens["invoice payment confirmation"] = -6.0;
+  triageTokens["weekly ai innovations"] = -6.0;
+  triageTokens["product hunt"] = -6.0;
 
   // ===========================================================================
   // 2. TOOLS MODEL FITTING
