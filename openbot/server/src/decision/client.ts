@@ -15,7 +15,15 @@ import type {
 
 function getWeightsPath(config: DecisionConfig): string {
   const modelDir = config.model.toLowerCase().includes("laya") ? "laya" : "opendecider-nano";
-  return join(process.cwd(), "models", modelDir, "weights.json");
+  const candidates = [
+    join(import.meta.dir, "..", "..", "..", "models", modelDir, "weights.json"),
+    join(process.cwd(), "models", modelDir, "weights.json"),
+    join(process.cwd(), "..", "models", modelDir, "weights.json"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return candidates[0];
 }
 
 function isInProcessAvailable(config: DecisionConfig): boolean {

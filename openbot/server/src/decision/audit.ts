@@ -23,10 +23,13 @@ export type DecisionAuditEntry = {
   };
 };
 
-const DEFAULT_AUDIT_LOG_PATH = join(process.cwd(), "data", "decisions", "decision-audit.jsonl");
+const DEFAULT_AUDIT_LOG_PATH = join(import.meta.dir, "..", "..", "..", "data", "decisions", "decision-audit.jsonl");
 
 function resolveLogPath(customPath?: string): string {
   if (!customPath) return DEFAULT_AUDIT_LOG_PATH;
+  if (customPath.startsWith("data/") || customPath.startsWith("data\\")) {
+    return join(import.meta.dir, "..", "..", "..", customPath);
+  }
   return resolve(process.cwd(), customPath);
 }
 
@@ -190,3 +193,4 @@ export async function getDecisionAuditStats(customPath?: string) {
   stats.avgLatencyMs = entries.length > 0 ? Number((totalLatency / entries.length).toFixed(3)) : 0;
   return stats;
 }
+

@@ -2,7 +2,7 @@
 import { spawn } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 /**
  * Start the local stack without Docker.
@@ -260,6 +260,16 @@ async function up(): Promise<void> {
              * a health check on a port nothing is listening to.
              */
             PORT: String(computerPort),
+            PROFILES_DIR: environment.PROFILES_DIR
+              ? resolve(root, environment.PROFILES_DIR)
+              : join(runDirectory, "profiles"),
+            WORKSPACE_DIR: environment.WORKSPACE_DIR
+              ? resolve(root, environment.WORKSPACE_DIR)
+              : join(runDirectory, "workspace"),
+            EGRESS_POLICY_REQUIRED:
+              environment.EGRESS_POLICY_REQUIRED ?? "0",
+            AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS:
+              environment.AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS ?? "true",
           },
         ),
       );

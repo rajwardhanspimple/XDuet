@@ -110,9 +110,8 @@ Breakdown by Domain:`);
           ? "[CORRECTED]"
           : "[PENDING]";
 
-      const latStr = e.latencyMs != null ? `${e.latencyMs.toFixed(2)}ms` : "-";
       console.log(
-        `${e.id.padEnd(26)} | ${e.domain.padEnd(14)} | ${verdictStr.slice(0, 22).padEnd(22)} | ${confStr.padEnd(6)} | ${latStr.padEnd(8)} | ${statusIcon}`
+        `${e.id.padEnd(26)} | ${e.domain.padEnd(14)} | ${verdictStr.slice(0, 22).padEnd(22)} | ${confStr.padEnd(6)} | ${(e.latencyMs + "ms").padEnd(8)} | ${statusIcon}`
       );
     }
     console.log("");
@@ -278,3 +277,4 @@ Breakdown by Domain:`);
 }
 
 void main();
+

@@ -63,7 +63,7 @@ export const VIEWPORT = { width: 1280, height: 800 };
  * a container that is killed does not get to run cleanup. If this process is starting, no browser of
  * ours is running, so any lock here is by definition from a life that has already ended.
  */
-const SINGLETON_FILES = ["SingletonLock", "SingletonSocket", "SingletonCookie"];
+const SINGLETON_FILES = ["SingletonLock", "SingletonSocket", "SingletonCookie", "lockfile"];
 
 /**
  * How the browser is started, and why each flag is here.
