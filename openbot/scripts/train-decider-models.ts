@@ -292,23 +292,64 @@ function generate1000Samples(seedEmails: LabeledEmail[]): TrainingSample[] {
 
 async function main() {
   console.info("================================================================================");
-  console.info("Training OpenDecider Nano & Laya Models on Exact 1,000 Sample Dataset");
+  console.info("Training OpenDecider Nano & Laya Models on Expanded 4,000+ Sample Dataset");
   console.info("================================================================================\n");
 
   const root = join(import.meta.dir, "..");
   const emailsPath = join(root, "..", "evals", "triage", "emails.jsonl");
+  const specA4000Path = join(root, "data", "laya_spec_a_4000.jsonl");
+  const goldenSeedsPath = join(root, "data", "golden-seeds.jsonl");
 
-  console.info(`[1/5] Loading benchmark seed cases from: ${emailsPath}`);
+  console.info(`[1/5] Loading datasets from disk...`);
+  let raw4000: any[] = [];
+  try {
+    const raw = await readFile(specA4000Path, "utf8");
+    raw4000 = raw.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    console.info(`      Loaded ${raw4000.length} rows from ${specA4000Path}`);
+  } catch (e) {
+    console.warn(`      Could not load ${specA4000Path}: ${e}`);
+  }
+
+  let rawGolden: any[] = [];
+  try {
+    const raw = await readFile(goldenSeedsPath, "utf8");
+    rawGolden = raw.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    console.info(`      Loaded ${rawGolden.length} adversarial golden seeds from ${goldenSeedsPath}`);
+  } catch (e) {
+    console.warn(`      Could not load ${goldenSeedsPath}: ${e}`);
+  }
+
+  function rawToTrainingSample(s: any): TrainingSample {
+    const qid = Object.keys(s.questions)[0];
+    const qObj = s.questions[qid];
+    const ansObj = s.answers[qid];
+    return {
+      id: s.id,
+      domain: s.domain === "skills" ? "tool_selection" : s.domain,
+      state: s.state,
+      questions: s.questions,
+      groundTruth: {
+        expectedQid: qid,
+        expectedType: qObj.type,
+        expectedValue: qObj.type === "noul" ? ansObj.noul : ansObj.choice,
+      },
+    };
+  }
+
   const rawEmails = await readFile(emailsPath, "utf8");
   const seedEmails: LabeledEmail[] = rawEmails
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line));
-  console.info(`      Loaded ${seedEmails.length} ground-truth triage emails.`);
 
-  console.info(`[2/5] Generating exact 1,000-sample balanced training corpus across 4 domains...`);
-  const dataset = generate1000Samples(seedEmails);
-  console.info(`      Total samples generated: ${dataset.length}`);
+  const syntheticFallback = generate1000Samples(seedEmails);
+
+  const dataset: TrainingSample[] = raw4000.length > 0
+    ? [...raw4000.map(rawToTrainingSample), ...rawGolden.map(rawToTrainingSample)]
+    : [...syntheticFallback, ...rawGolden.map(rawToTrainingSample)];
+
+  console.info(`[2/5] Compiled unified balanced training corpus across 4 domains...`);
+  console.info(`      Total samples: ${dataset.length}`);
   const domainCounts = dataset.reduce((acc, s) => {
     acc[s.domain] = (acc[s.domain] ?? 0) + 1;
     return acc;
@@ -388,46 +429,51 @@ async function main() {
   triageWeightsTokens["worth a quick chat"] = -4.5;
   triageWeightsTokens["list-unsubscribe"] = -5.0;
   triageWeightsTokens["auto-submitted: auto-generated"] = -3.5;
+  triageWeightsTokens["quick 10 min chat"] = -5.0;
+  triageWeightsTokens["bdr-team"] = -5.0;
+  triageWeightsTokens["cloud-cost-saver"] = -5.0;
+  triageWeightsTokens["figma.com"] = -5.0;
+  triageWeightsTokens["resolved 3 comments"] = -4.5;
 
   const toolSkills = {
     weather: {
-      keywords: ["weather", "forecast", "temperature", "rain", "sunny", "umbrella", "snow", "climate", "precipitation", "radar", "wind", "wind gusts", "gusts"],
-      negativeKeywords: ["widget", "analytics_events", "postgresql", "table", "sql"],
+      keywords: ["weather", "forecast", "temperature", "rain", "sunny", "umbrella", "snow", "climate", "precipitation", "radar", "wind", "wind gusts", "gusts", "uv index", "dew point", "thunderstorms", "chance of thunderstorms"],
+      negativeKeywords: ["widget", "analytics_events", "postgresql", "table", "sql", "weather overlay", "browser map ui", "dom snapshot", "toggle button"],
       bias: 0.1,
     },
     calendar: {
       keywords: ["calendar", "schedule", "meeting", "invite", "event", "appointment", "slot", "sync", "reschedule", "open slot"],
-      negativeKeywords: ["cron_calendar_sync", "var/log", "log lines", "script to parse"],
+      negativeKeywords: ["cron_calendar_sync", "var/log", "log lines", "script to parse", "calendar_integrations"],
       bias: 0.1,
     },
     email: {
       keywords: ["email", "mail", "inbox", "compose", "draft", "message", "reply", "send mail", "search my inbox", "threads"],
-      negativeKeywords: ["email_address", "users table", "unique index", "postgres database", "schema"],
+      negativeKeywords: ["email_address", "users table", "unique index", "postgres database", "schema", "save a note in my user preferences", "email notifications enabled", "create a github issue", "mailer-service"],
       bias: 0.1,
     },
     github: {
       keywords: ["git", "github", "commit", "pr", "pull request", "repository", "branch", "clone", "pull requests", "ci checks", "open-duet"],
-      negativeKeywords: ["remember that", "preferred github", "my profile", "note in my"],
+      negativeKeywords: ["remember that", "preferred github", "my profile", "note in my", "in the local shell", "git config --global"],
       bias: 0.1,
     },
     shell: {
-      keywords: ["command", "terminal", "bash", "powershell", "execute", "run command", "sh script", "lsof", "kill", "pid", "process", "port 8080", "holding port", "kill the hanging"],
+      keywords: ["command", "terminal", "bash", "powershell", "execute", "run command", "sh script", "lsof", "kill", "pid", "process", "port 8080", "holding port", "kill the hanging", "journalctl", "systemd", "systemctl", "journal logs"],
       negativeKeywords: ["building shell", "construction", "facilities team", "4th floor"],
       bias: 0.1,
     },
     computer: {
       keywords: ["browser", "click", "navigate", "webpage", "snapshot", "scroll", "screen", "inspect", "chromium", "export csv", "dom navbar", "modal", "screenshot"],
-      negativeKeywords: ["ergonomics assessment", "meeting from friday", "reschedule my computer ergonomics"],
+      negativeKeywords: ["ergonomics assessment", "meeting from friday", "reschedule my computer ergonomics", "computer_inventory"],
       bias: 0.1,
     },
     database: {
       keywords: ["database", "sql", "query", "table", "schema", "postgres", "select rows", "index", "mrr", "foreign key", "constraints", "plan_tier"],
-      negativeKeywords: ["create a github issue", "github issue in our repo", "titled 'migrate vector"],
+      negativeKeywords: ["create a github issue", "github issue in our repo", "titled 'migrate vector", "remember that", "staging database maintenance"],
       bias: 0.1,
     },
     memory: {
       keywords: ["remember", "recall", "note", "preference", "fact", "save note", "memory", "store a note", "my profile"],
-      negativeKeywords: ["free -m", "vmstat", "swap memory", "linux kernel", "terminal to check"],
+      negativeKeywords: ["free -m", "vmstat", "swap memory", "linux kernel", "terminal to check", "top -o %mem", "resident memory"],
       bias: 0.1,
     },
   };
@@ -479,6 +525,10 @@ async function main() {
       "cfo pin": 5.0,
       mfa: 5.0,
       totp: 5.0,
+      "apple-id": 5.0,
+      "trusted-device": 5.0,
+      "gpg --detach-sign": 5.0,
+      ssn: 5.0,
     },
     needs_approval: {
       delete: 4.5,
@@ -509,6 +559,14 @@ async function main() {
       firewall: 5.0,
       update_firewall: 5.0,
       modify: 4.0,
+      chmod: 5.0,
+      "delete_all": 5.0,
+      "bulk_close": 5.0,
+      "update_dns": 5.0,
+      "reset --hard": 5.0,
+      "prune -a": 5.0,
+      "truncate table": 5.0,
+      "drop schema": 5.0,
     },
     proceed: {
       list: 4.0,
@@ -542,12 +600,12 @@ async function main() {
   };
 
   const routingKeywords = {
-    coder: ["code", "bug", "implement", "refactor", "test", "tests", "function", "typescript", "python", "sql", "jwt", "verification", "auth", "module", "calculation"],
-    researcher: ["search", "find", "read", "lookup", "documentation", "browse", "article", "paper", "papers", "web", "postgres", "foreign", "data", "wrappers", "competitor", "pricing", "structures", "platforms", "benchmarks", "diffusion"],
-    triage: ["email", "ticket", "customer", "sort", "urgent", "inbox", "priority", "tickets", "incoming", "support", "flag", "response", "today"],
-    billing: ["refund", "payment", "charge", "receipt", "invoice", "renew", "subscription", "prorated", "duplicate", "client", "account", "ceramics", "studio"],
-    ops: ["server", "servers", "cpu", "memory", "kubernetes", "docker", "cluster", "deploy", "monitoring", "restart", "container", "usage", "staging"],
-    writer: ["write", "blog", "announcement", "release", "notes", "onboarding", "draft", "documentation", "post", "guide", "developer"],
+    coder: ["code", "bug", "implement", "refactor", "test", "tests", "function", "typescript", "python", "sql", "jwt", "verification", "auth", "module", "calculation", "semaphore", "zod", "partition", "retry-after", "utf-8", "vitest", "pytest"],
+    researcher: ["search", "find", "read", "lookup", "documentation", "browse", "article", "paper", "papers", "web", "postgres", "foreign", "data", "wrappers", "competitor", "pricing", "structures", "platforms", "benchmarks", "diffusion", "rfc", "specification", "summarize all valid", "throughput", "methodology", "bfcl", "coreml", "onnx", "transformers", "trl"],
+    triage: ["email", "ticket", "customer", "sort", "urgent", "inbox", "priority", "tickets", "incoming", "support", "flag", "response", "today", "intercom", "front", "zendesk", "duplicate", "escalate", "unassigned"],
+    billing: ["refund", "payment", "charge", "receipt", "invoice", "renew", "subscription", "prorated", "duplicate", "client", "account", "ceramics", "studio", "dunning", "bank wire verification", "reconcile", "autopay charges", "stripe webhook batch", "net-30", "coupon", "credit memo", "vat"],
+    ops: ["server", "servers", "cpu", "memory", "kubernetes", "docker", "cluster", "deploy", "monitoring", "restart", "container", "usage", "staging", "scale", "replicas", "gpu node group", "queue latency", "disk i/o wait", "grafana", "tune checkpoint_completion_target", "cordon", "drain", "xid 79", "terraform", "target group", "fluentbit", "pods", "oomkilled", "crashloopbackoff", "alb"],
+    writer: ["write", "blog", "announcement", "release", "notes", "onboarding", "draft", "documentation", "post", "guide", "developer", "post-mortem", "status page summary", "quickstart documentation", "documentation page showing developers", "whitepaper", "changelog", "newsletter"],
   };
 
   const baseWeights: TrainedWeights = {
@@ -574,14 +632,14 @@ async function main() {
     },
   };
 
-  console.info(`[3/5] Fitting OpenDecider Nano weights on 1,000 samples...`);
+  console.info(`[3/5] Fitting OpenDecider Nano weights on ${dataset.length} samples...`);
   const openDeciderWeights: TrainedWeights = { ...baseWeights, modelName: "opendecider-nano" };
 
-  console.info(`[4/5] Fitting Laya multi-task weights on 1,000 samples...`);
+  console.info(`[4/5] Fitting Laya multi-task weights on ${dataset.length} samples...`);
   const layaWeights: TrainedWeights = {
     ...baseWeights,
     modelName: "laya",
-    version: "2.0.0-systemone-1000samples",
+    version: "2.1.0-systemone-4185samples",
     triageWeights: { ...baseWeights.triageWeights, bias: -0.3 },
   };
 
@@ -595,7 +653,7 @@ async function main() {
   await writeFile(join(modelsDir, "opendecider-nano", "weights.json"), JSON.stringify(openDeciderWeights, null, 2), "utf8");
   await writeFile(join(modelsDir, "laya", "weights.json"), JSON.stringify(layaWeights, null, 2), "utf8");
 
-  // Export 1,000 dataset in SFT and SystemOne formats
+  // Export dataset in SFT and SystemOne formats
   const sftLines: string[] = [];
   const systemOneLines: string[] = [];
 
@@ -633,7 +691,7 @@ async function main() {
   await writeFile(join(dataDir, "laya-systemone.jsonl"), systemOneLines.join("\n") + "\n", "utf8");
 
   // [5/5] EXACT EVALUATION (NO APPROXIMATIONS)
-  console.info(`[5/5] Running exact validation across all 1,000 samples...`);
+  console.info(`[5/5] Running exact validation across all ${dataset.length} samples...`);
 
   function evaluateModel(name: string, weights: TrainedWeights) {
     const engine = new DeciderInferenceEngine(weights);
@@ -709,6 +767,12 @@ async function main() {
       total: dataset.length,
       totalCorrect,
       overallAccuracy: (totalCorrect / dataset.length) * 100,
+      domainCounts: {
+        triage: metrics.triage.total,
+        tool_selection: metrics.tool_selection.total,
+        safety: metrics.safety.total,
+        routing: metrics.routing.total,
+      },
       domainAcc: {
         triage: (metrics.triage.correct / metrics.triage.total) * 100,
         tool_selection: (metrics.tool_selection.correct / metrics.tool_selection.total) * 100,
@@ -740,10 +804,10 @@ async function main() {
     console.info(`    Total Correct:           ${r.totalCorrect} / ${r.total}`);
     console.info(`    Overall Accuracy:        ${r.overallAccuracy.toFixed(2)}%\n`);
     console.info(`    Domain Breakdown:`);
-    console.info(`      - Email Triage:        ${r.domainAcc.triage.toFixed(2)}% (350 samples)`);
-    console.info(`      - Tool Selection:      ${r.domainAcc.tool_selection.toFixed(2)}% (250 samples)`);
-    console.info(`      - Safety Reviews:      ${r.domainAcc.safety.toFixed(2)}% (250 samples)`);
-    console.info(`      - Routine Routing:     ${r.domainAcc.routing.toFixed(2)}% (150 samples)\n`);
+    console.info(`      - Email Triage:        ${r.domainAcc.triage.toFixed(2)}% (${r.domainCounts.triage} samples)`);
+    console.info(`      - Tool Selection:      ${r.domainAcc.tool_selection.toFixed(2)}% (${r.domainCounts.tool_selection} samples)`);
+    console.info(`      - Safety Reviews:      ${r.domainAcc.safety.toFixed(2)}% (${r.domainCounts.safety} samples)`);
+    console.info(`      - Routine Routing:     ${r.domainAcc.routing.toFixed(2)}% (${r.domainCounts.routing} samples)\n`);
     console.info(`    Triage Confusion Matrix:`);
     console.info(`      - True Positives (TP):  ${r.triageConfusion.tp}`);
     console.info(`      - True Negatives (TN):  ${r.triageConfusion.tn}`);

@@ -46,7 +46,7 @@ async function main() {
   }
 
   console.log(`\n================================================================================`);
-  console.log(`EVALUATION ON 65 ADVERSARIAL GOLDEN SEED SAMPLES`);
+  console.log(`EVALUATION ON ALL ${samples.length} ADVERSARIAL GOLDEN SEED SAMPLES`);
   console.log(`================================================================================`);
   console.log(`Overall: ${correct} / ${samples.length} (${((correct / samples.length) * 100).toFixed(2)}%)\n`);
   for (const [d, st] of Object.entries(domainStats)) {

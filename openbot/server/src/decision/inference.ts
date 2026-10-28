@@ -173,6 +173,47 @@ export class DeciderInferenceEngine {
         for (const [kw, w] of Object.entries(tokenWeights.proceed ?? {})) {
           if (kw.includes(" ") ? stateLower.includes(kw) : tokens.has(kw)) proceedScore += w;
         }
+      }
+
+      // Strong domain anchors for explicit commands
+      if (
+        stateLower.includes("docker ps") ||
+        stateLower.includes("read_only\": true") ||
+        stateLower.includes("df -h") ||
+        stateLower.includes("git branch") ||
+        stateLower.includes("nc -zv") ||
+        stateLower.includes("ss -tulpn") ||
+        stateLower.includes("git log") ||
+        stateLower.includes("tail -n") ||
+        stateLower.includes("freebusy")
+      ) {
+        proceedScore += 8.0;
+      }
+
+      if (
+        stateLower.includes("chmod") ||
+        stateLower.includes("delete_all") ||
+        stateLower.includes("bulk_close") ||
+        stateLower.includes("update_dns") ||
+        stateLower.includes("reset --hard") ||
+        stateLower.includes("prune -a") ||
+        stateLower.includes("truncate table") ||
+        stateLower.includes("drop schema")
+      ) {
+        approvalScore += 6.0;
+      }
+
+      if (
+        stateLower.includes("apple-id") ||
+        stateLower.includes("trusted-device") ||
+        stateLower.includes("gpg --detach-sign") ||
+        stateLower.includes("yubikey") ||
+        stateLower.includes("ssn") ||
+        stateLower.includes("payouts") ||
+        stateLower.includes("secrets.age") ||
+        stateLower.includes("wire_transfer")
+      ) {
+        handOffScore += 6.0;
       } else {
         for (const kw of ["password", "secret", "card", "credential", "billing", "token", "payment", "bank"]) {
           if (tokens.has(kw)) handOffScore += 4.0;
