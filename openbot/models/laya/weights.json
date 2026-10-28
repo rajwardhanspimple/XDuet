@@ -1,7 +1,7 @@
 {
   "modelName": "laya",
   "version": "3.0.0-laya-official",
-  "trainedAt": "2026-10-28T22:21:20.526Z",
+  "trainedAt": "2026-10-28T22:33:47.996Z",
   "totalTrainingSamples": 8342,
   "triageWeights": {
     "bias": -0.25,

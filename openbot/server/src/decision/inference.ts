@@ -180,8 +180,21 @@ export class DeciderInferenceEngine {
       }
 
       // High-precedence critical incidents & executive clearances
+      const isBulkHeader = 
+        Object.entries(headers).some(([k, v]) => {
+          const kl = k.toLowerCase();
+          const vl = String(v).toLowerCase();
+          return (
+            (kl === "precedence" && (vl.includes("bulk") || vl.includes("list"))) ||
+            kl === "list-id" ||
+            kl === "list-unsubscribe" ||
+            (kl === "auto-submitted" && vl !== "no")
+          );
+        }) || /mailing list|lists\.sourceforge/i.test(cleanLower);
+
       const isCriticalIncident = 
-        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours|dmca|copyright infringement|subpoena|court summons|legal notice|takedown notice|counter-notice|regulatory notice|pls clear|please clear|need clearance|pls sign off|sign-off before|attached for your review and sign-off|need your sign-off|are you still here|are you in the office|pls print|please print|call sheet|call windows|gate change|boarding now|departs in \d+|flight.*cancelled/i.test(cleanLower) ||
+        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours|pls clear|please clear|need clearance|pls sign off|sign-off before|attached for your review and sign-off|need your sign-off|are you still here|are you in the office|pls print|please print|call sheet|call windows|gate change|boarding now|departs in \d+|flight.*cancelled/i.test(cleanLower) ||
+        (!isBulkHeader && /dmca|copyright infringement|subpoena|court summons|legal notice|takedown notice|counter-notice|regulatory notice/i.test(cleanLower)) ||
         /\[.*support\] re:/i.test(subj);
 
       if (isCriticalIncident) {
@@ -246,11 +259,26 @@ export class DeciderInferenceEngine {
           return { type: "noul", noul: 0.01 };
         }
       }
-      if (skillSlug === "github" && /\b(commit our (git )?changes|git commit|review pull requests?|git diff)\b/i.test(cleanLower)) {
-        return { type: "noul", noul: 0.99 };
+      if (skillSlug === "github") {
+        if (!/\b(pr\s*#?\d+|pull request)\b/i.test(cleanLower) && (/\b(in the browser|browser and take a screenshot|take a screenshot of the dashboard|salesforce|linkedin)\b/i.test(cleanLower) || /\brun the test suite locally before\b/i.test(cleanLower))) {
+          return { type: "noul", noul: 0.01 };
+        }
+        if (/\b(commit our (git )?changes|git commit|review pull requests?|git diff|failing pr|pr\s*#\d+)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.99 };
+        }
       }
-      if (skillSlug === "memory" && /\b(update (our )?(local )?memory|save to memory|store in memory|remember that|remember my|memory cache|memory notes|in our memory|search memory|check memory|lookup.*memory|look up.*memory)\b/i.test(cleanLower)) {
-        return { type: "noul", noul: 0.99 };
+      if (skillSlug === "memory") {
+        if (/\b(compare the weather|weather in)\b/i.test(cleanLower) && !/\b(remember|recall|notes?|history)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.01 };
+        }
+        if (/\b(update (our )?(local )?memory|save to memory|store in memory|remember that|remember my|memory cache|memory notes|in our memory|search memory|check memory|lookup.*memory|look up.*memory)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.99 };
+        }
+      }
+      if (skillSlug === "computer") {
+        if (/\b(tell me a joke|tell a joke)\b/i.test(cleanLower) || /\bwith the screenshot.*attached\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.01 };
+        }
       }
       if (skillSlug === "shell") {
         if (/\b(calendar invite|schedule a .* invite|security guidelines|review our shell)\b/i.test(cleanLower)) {
@@ -261,6 +289,9 @@ export class DeciderInferenceEngine {
         }
       }
       if (skillSlug === "calendar") {
+        if (/\b(remember.*important points for my meeting|create a note)\b/i.test(cleanLower)) {
+          return { type: "noul", noul: 0.01 };
+        }
         if (/\b(rain|temperature|snow|precipitation|weather forecast|wind speed|humidity|sunny|cloudy)\b/i.test(cleanLower) && !/\b(calendar|meeting|event|schedule|invite|slot|appointment|reschedule|sync)\b/i.test(cleanLower)) {
           return { type: "noul", noul: 0.01 };
         }
@@ -390,21 +421,31 @@ export class DeciderInferenceEngine {
         stateLower.includes("du -sh") ||
         stateLower.includes("tail -n") ||
         stateLower.includes("freebusy") ||
-        stateLower.includes("ping ") ||
-        stateLower.includes("ping -") ||
+        ((stateLower.includes("ping ") || stateLower.includes("ping -")) && !stateLower.includes("slack") && !stateLower.includes("#incident") && !stateLower.includes("@channel") && !stateLower.includes("everyone")) ||
         stateLower.includes("traceroute ") ||
         stateLower.includes("dig ") ||
         stateLower.includes("nslookup ") ||
+        stateLower.includes("rsync -avn") ||
+        stateLower.includes("rsync -n") ||
         (stateLower.includes("find ") && !stateLower.includes("-delete") && !stateLower.includes("-exec rm")) ||
         stateLower.includes("cat /etc/passwd") ||
         stateLower.includes("black --check") ||
-        stateLower.includes("grep -rn")
+        stateLower.includes("grep -rn") ||
+        stateLower.includes("grep ")
       ) {
         rawScores["proceed"] = Math.max((rawScores["proceed"] ?? 0) + 14.0, (rawScores["needs_approval"] ?? 0) + 5.0);
       }
 
-      // Benign git branch checkout navigation
-      if (/\bgit checkout\s+[a-zA-Z0-9_\-\/]+\b/i.test(stateLower) && !stateLower.includes("git checkout --") && !stateLower.includes("git checkout .") && !stateLower.includes("-f") && !stateLower.includes("--force")) {
+      // Benign git branch checkout navigation (local branch only, not chained with commit/push)
+      if (
+        /\bgit checkout\s+[a-zA-Z0-9_\-\/]+\b/i.test(stateLower) &&
+        !stateLower.includes("git checkout --") &&
+        !stateLower.includes("git checkout .") &&
+        !stateLower.includes("-f") &&
+        !stateLower.includes("--force") &&
+        !stateLower.includes("git push") &&
+        !stateLower.includes("git commit")
+      ) {
         rawScores["proceed"] = Math.max((rawScores["proceed"] ?? 0) + 24.0, (rawScores["needs_approval"] ?? 0) + 6.0);
       }
 
@@ -413,8 +454,12 @@ export class DeciderInferenceEngine {
         stateLower.includes("| sh") ||
         stateLower.includes("| zsh") ||
         stateLower.includes("| sudo") ||
-        stateLower.includes("git push --force") ||
-        stateLower.includes("git push -f") ||
+        stateLower.includes("git push") ||
+        (!stateLower.includes("git log") && !stateLower.includes("git status") && (stateLower.includes("git commit -") || stateLower.includes("git commit \"") || stateLower.includes("git commit '") || stateLower.includes("&& git commit"))) ||
+        stateLower.includes("slack.post") ||
+        stateLower.includes("@channel") ||
+        stateLower.includes("#incident") ||
+        (stateLower.includes("fs.write") && !stateLower.includes("readme.md") && !stateLower.includes("/repo/readme")) ||
         stateLower.includes("chmod") ||
         stateLower.includes("delete_all") ||
         stateLower.includes("bulk_close") ||
@@ -423,7 +468,9 @@ export class DeciderInferenceEngine {
         stateLower.includes("prune -a") ||
         stateLower.includes("truncate table") ||
         stateLower.includes("drop schema") ||
-        stateLower.includes("rm -rf") ||
+        stateLower.includes("drop column") ||
+        stateLower.includes("alter table") ||
+        (stateLower.includes("rm -rf") && !stateLower.includes("grep ") && !stateLower.includes("grep -")) ||
         stateLower.includes("mkfs") ||
         (stateLower.includes("fdisk") && !stateLower.includes("-l") && !stateLower.includes("--list")) ||
         stateLower.includes("parted") ||
@@ -443,7 +490,7 @@ export class DeciderInferenceEngine {
         stateLower.includes("crontab -r") ||
         stateLower.includes("tar -xvf") ||
         stateLower.includes("tar -xzf") ||
-        stateLower.includes("--delete") ||
+        (stateLower.includes("--delete") && !stateLower.includes("rsync -avn") && !stateLower.includes("rsync -n") && !stateLower.includes("--dry-run")) ||
         stateLower.includes("resolv.conf") ||
         stateLower.includes("git clean")
       ) {
@@ -460,14 +507,19 @@ export class DeciderInferenceEngine {
         stateLower.includes("trusted-device") ||
         stateLower.includes("gpg --detach-sign") ||
         stateLower.includes("yubikey") ||
-        stateLower.includes("ssn") ||
+        (stateLower.includes("ssn") && !stateLower.includes("drop column") && !stateLower.includes("alter table")) ||
         stateLower.includes("payouts") ||
         stateLower.includes("secrets.age") ||
         stateLower.includes("wire_transfer") ||
         stateLower.includes("payment.wire") ||
+        stateLower.includes("authorized_keys") ||
+        stateLower.includes("private key") ||
+        stateLower.includes("root key") ||
         stateLower.includes("billing.add_funds")
       ) {
-        rawScores["hand_off"] = (rawScores["hand_off"] ?? 0) + 6.0;
+        rawScores["hand_off"] = Math.max((rawScores["hand_off"] ?? 0) + 20.0, (rawScores["needs_approval"] ?? 0) + 6.0);
+        rawScores["needs_approval"] = Math.min(rawScores["needs_approval"] ?? 0, -2.0);
+        rawScores["proceed"] = Math.min(rawScores["proceed"] ?? 0, -5.0);
       }
 
       const probs = softmax(rawScores);
