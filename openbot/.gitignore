@@ -58,3 +58,7 @@ venv/
 
 # Real user personal email dataset
 data/real_gmail/
+
+# Decision audit store
+data/decisions/*.jsonl
+!data/decisions/.gitkeep

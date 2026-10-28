@@ -1,5 +1,8 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { DecisionConfig } from "./config";
-import { logDecisionDataset } from "./dataset";
+import { recordDecisionAudit } from "./audit";
+import { DeciderInferenceEngine, type TrainedWeights } from "./inference";
 import type {
   ChoiceAnswer,
   DecisionAnswer,
@@ -9,6 +12,19 @@ import type {
   NoulAnswer,
   ScoreAnswer,
 } from "./types";
+
+function getWeightsPath(config: DecisionConfig): string {
+  const modelDir = config.model.toLowerCase().includes("laya") ? "laya" : "opendecider-nano";
+  return join(process.cwd(), "models", modelDir, "weights.json");
+}
+
+function isInProcessAvailable(config: DecisionConfig): boolean {
+  try {
+    return existsSync(getWeightsPath(config));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The three ways this deployment can answer a typed decision.
@@ -25,7 +41,48 @@ export function createDecisionClient(config: DecisionConfig): DecisionClient {
       return new MercuryDecideClient(config);
     case "opendecider":
     case "laya":
+      if (config.baseUrl === "in-process") {
+        return new InProcessDecisionClient(config);
+      }
       return new LocalDecisionClient(config);
+  }
+}
+
+class InProcessDecisionClient implements DecisionClient {
+  readonly provider: string;
+  readonly model: string;
+  private engine: DeciderInferenceEngine;
+
+  constructor(private readonly config: DecisionConfig) {
+    this.provider = config.provider;
+    this.model = config.model;
+    const weightsPath = getWeightsPath(config);
+    const weights: TrainedWeights = JSON.parse(readFileSync(weightsPath, "utf8"));
+    this.engine = new DeciderInferenceEngine(weights);
+  }
+
+  async decide(
+    state: unknown,
+    questions: Record<string, DecisionQuestion>,
+    _signal?: AbortSignal,
+  ): Promise<DecisionAnswers> {
+    const t0 = performance.now();
+    const answers = this.engine.predict(state, questions);
+    const latencyMs = performance.now() - t0;
+
+    void recordDecisionAudit(
+      {
+        provider: this.provider,
+        model: this.model,
+        state,
+        questions,
+        answers,
+        latencyMs,
+      },
+      this.config.datasetLogPath,
+    );
+
+    return answers;
   }
 }
 
@@ -65,6 +122,7 @@ class Mercury3DecisionClient implements DecisionClient {
         },
       ],
     };
+    const t0 = performance.now();
     const result = (await postJson(
       `${this.config.baseUrl}/chat/completions`,
       body,
@@ -74,21 +132,23 @@ class Mercury3DecisionClient implements DecisionClient {
     )) as {
       choices?: Array<{ message?: { content?: unknown } }>;
     };
+    const latencyMs = performance.now() - t0;
     const text = result.choices?.[0]?.message?.content;
     if (typeof text !== "string") {
       throw new Error("Mercury 3 returned no decision text.");
     }
     const answers = parseAnswers(text, questions);
-    if (this.config.datasetLogPath) {
-      void logDecisionDataset(this.config.datasetLogPath, {
-        timestamp: new Date().toISOString(),
+    void recordDecisionAudit(
+      {
         provider: this.provider,
         model: this.model,
         state,
         questions,
         answers,
-      });
-    }
+        latencyMs,
+      },
+      this.config.datasetLogPath,
+    );
     return answers;
   }
 }
@@ -106,6 +166,7 @@ class MercuryDecideClient implements DecisionClient {
     questions: Record<string, DecisionQuestion>,
     signal?: AbortSignal,
   ): Promise<DecisionAnswers> {
+    const t0 = performance.now();
     const result = await postJson(
       `${this.config.baseUrl}/decisions`,
       { model: this.model, state, questions },
@@ -113,17 +174,19 @@ class MercuryDecideClient implements DecisionClient {
       this.config.timeoutMs,
       signal,
     );
+    const latencyMs = performance.now() - t0;
     const answers = answersFromResponse(result, questions);
-    if (this.config.datasetLogPath) {
-      void logDecisionDataset(this.config.datasetLogPath, {
-        timestamp: new Date().toISOString(),
+    void recordDecisionAudit(
+      {
         provider: this.provider,
         model: this.model,
         state,
         questions,
         answers,
-      });
-    }
+        latencyMs,
+      },
+      this.config.datasetLogPath,
+    );
     return answers;
   }
 }
@@ -153,6 +216,7 @@ class LocalDecisionClient implements DecisionClient {
 
     for (const url of candidates) {
       try {
+        const t0 = performance.now();
         const result = await postJson(
           url,
           body,
@@ -160,17 +224,19 @@ class LocalDecisionClient implements DecisionClient {
           this.config.timeoutMs,
           signal,
         );
+        const latencyMs = performance.now() - t0;
         const answers = answersFromResponse(result, questions);
-        if (this.config.datasetLogPath) {
-          void logDecisionDataset(this.config.datasetLogPath, {
-            timestamp: new Date().toISOString(),
+        void recordDecisionAudit(
+          {
             provider: this.provider,
             model: this.model,
             state,
             questions,
             answers,
-          });
-        }
+            latencyMs,
+          },
+          this.config.datasetLogPath,
+        );
         return answers;
       } catch (error) {
         lastError = error;

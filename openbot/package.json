@@ -37,7 +37,8 @@
     "train:deciders": "bun scripts/train-decider-models.ts",
     "export:decision-dataset": "bun scripts/export-decision-dataset.ts",
     "composio:smoke": "bun scripts/composio-smoke.ts",
-    "mock:knowledge": "bun scripts/mock-knowledge-mcp.ts"
+    "mock:knowledge": "bun scripts/mock-knowledge-mcp.ts",
+    "supervise": "bun scripts/supervise-decisions.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

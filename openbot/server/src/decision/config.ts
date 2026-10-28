@@ -117,7 +117,7 @@ export function decisionConfigFromEnvironment(
         "DECISION_TRIAGE_THRESHOLD",
         0.7,
       ),
-      ...(datasetLogPath ? { datasetLogPath } : {}),
+      datasetLogPath: datasetLogPath ?? "data/decisions/decision-audit.jsonl",
     };
   }
 
@@ -160,7 +160,7 @@ export function decisionConfigFromEnvironment(
         "DECISION_TRIAGE_THRESHOLD",
         0.7,
       ),
-      ...(datasetLogPath ? { datasetLogPath } : {}),
+      datasetLogPath: datasetLogPath ?? "data/decisions/decision-audit.jsonl",
     };
   }
 
@@ -188,7 +188,7 @@ export function decisionConfigFromEnvironment(
       0.6,
     ),
     triageThreshold: numberFrom(environment, "DECISION_TRIAGE_THRESHOLD", 0.7),
-    ...(datasetLogPath ? { datasetLogPath } : {}),
+    datasetLogPath: datasetLogPath ?? "data/decisions/decision-audit.jsonl",
   };
 }
 
