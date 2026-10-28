@@ -17,6 +17,7 @@ type TrainingSample = {
 async function main() {
   const root = join(import.meta.dir, "..");
   const specA4000Path = join(root, "data", "laya_spec_a_4000.jsonl");
+  const downloadsPath = join(root, "data", "downloads_dataset", "system1_all.jsonl");
   const goldenSeedsPath = join(root, "data", "golden-seeds.jsonl");
 
   console.info(`[1/5] Loading datasets from disk...`);
@@ -25,6 +26,12 @@ async function main() {
     .filter(Boolean)
     .map((l) => JSON.parse(l));
   console.info(`      Loaded ${raw4000.length} rows from ${specA4000Path}`);
+
+  const rawDownloads = (await readFile(downloadsPath, "utf8"))
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
+  console.info(`      Loaded ${rawDownloads.length} rows from ${downloadsPath}`);
 
   const rawGolden = (await readFile(goldenSeedsPath, "utf8"))
     .split("\n")
@@ -36,10 +43,12 @@ async function main() {
     return {
       id: s.id,
       domain:
-        s.domain === "skills" || s.domain === "tools"
+        s.domain === "skills" || s.domain === "tools" || s.domain === "skill_selection"
           ? "tool_selection"
           : s.domain === "coworker"
           ? "routing"
+          : s.domain === "email_triage"
+          ? "triage"
           : s.domain,
       state: s.state,
       questions: s.questions,
@@ -49,6 +58,7 @@ async function main() {
 
   const dataset: TrainingSample[] = [
     ...raw4000.map(toSample),
+    ...rawDownloads.map(toSample),
     ...rawGolden.map(toSample),
   ];
 
@@ -89,7 +99,7 @@ async function main() {
   }
 
   for (const s of triageSamples) {
-    const isPos = s.answers.needs_you?.noul === 1;
+    const isPos = (s.answers.needs_you?.noul ?? 0) >= 0.5;
     if (isPos) numTPos++; else numTNeg++;
     const feats = getTriageFeatures(s.state);
     for (const f of feats) {
@@ -107,6 +117,7 @@ async function main() {
     "was", "were", "what", "its", "our", "your", "my", "have", "has", "had",
     "do", "does", "did", "can", "could", "will", "would", "shall", "should",
     "history", "body", "subject", "state", "headers", "latest_message",
+    "notes", "quarter", "quarters", "paragraph", "context", "background", "routine", "earlier",
   ]);
 
   for (const f of allTVocab) {
@@ -151,11 +162,13 @@ async function main() {
   triageTokens["payroll run cutoff"] = 7.0;
   triageTokens["callback verification required"] = 7.0;
   triageTokens["offer letter approval needed today"] = 7.0;
-  triageTokens["unauthorized"] = 5.0;
-  triageTokens["suspension"] = 4.5;
+  triageTokens["unauthorized"] = 6.0;
+  triageTokens["suspension"] = 5.0;
   triageTokens["immediately"] = 4.0;
-  triageTokens["prevent suspension"] = 6.0;
-  triageTokens["unauthorized transaction"] = 6.0;
+  triageTokens["prevent suspension"] = 7.0;
+  triageTokens["unauthorized transaction"] = 7.0;
+  triageTokens["card number immediately"] = 6.0;
+  triageTokens["coastalbank"] = 5.0;
   triageTokens["overdue"] = 4.0;
   triageTokens["termination"] = 4.0;
   triageTokens["outage"] = 4.0;
@@ -218,7 +231,7 @@ async function main() {
 
     for (const s of toolSamples) {
       if (s.answers[sk] === undefined) continue;
-      const isPos = s.answers[sk].noul === 1;
+      const isPos = (s.answers[sk].noul ?? 0) >= 0.5;
       if (isPos) sPos++; else sNeg++;
       const text = s.state.text || JSON.stringify(s.state);
       const feats = extractFeatures(text);
@@ -451,7 +464,7 @@ async function main() {
       const pred = engine.predict(s.state, s.questions);
 
       if (s.domain === "triage") {
-        const exp = s.answers.needs_you.noul === 1;
+        const exp = (s.answers.needs_you.noul ?? 0) >= 0.5;
         const act = ((pred.needs_you as any)?.noul ?? 0.5) >= 0.5;
         if (exp === act) {
           metrics.triage.correct++;
@@ -465,7 +478,7 @@ async function main() {
         let allMatch = true;
         for (const [sk, q] of Object.entries(s.questions)) {
           metrics.tool_selection.details.skillTotal++;
-          const exp = (s.answers[sk] as any)?.noul === 1;
+          const exp = ((s.answers[sk] as any)?.noul ?? 0) >= 0.5;
           const act = (((pred[sk] as any)?.noul ?? 0) >= 0.5);
           if (exp === act) {
             metrics.tool_selection.details.skillCorrect++;

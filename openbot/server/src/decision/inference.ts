@@ -39,7 +39,7 @@ export type TrainedWeights = {
 };
 
 export function extractFeatures(text: string): Set<string> {
-  const clean = text.toLowerCase().replace(/[^a-z0-9_\-\s\.]/g, " ");
+  const clean = text.toLowerCase().replace(/[^a-z0-9_\-\s]/g, " ");
   const words = clean.split(/\s+/).filter((w) => w.length > 1);
   const feats = new Set<string>();
   for (let i = 0; i < words.length; i++) {
@@ -102,12 +102,13 @@ export class DeciderInferenceEngine {
     const answers: DecisionAnswers = {};
     const stateStr = typeof state === "string" ? state : JSON.stringify(state);
     const tokens = new Set(tokenize(stateStr));
+    const feats = extractFeatures(stateStr);
 
     for (const [qid, question] of Object.entries(questions)) {
       if (question.type === "noul") {
-        answers[qid] = this.predictNoul(qid, state, tokens, question);
+        answers[qid] = this.predictNoul(qid, state, tokens, question, feats);
       } else if (question.type === "choice") {
-        answers[qid] = this.predictChoice(qid, state, tokens, question);
+        answers[qid] = this.predictChoice(qid, state, tokens, question, feats);
       } else if (question.type === "score") {
         answers[qid] = this.predictScore(qid, state, tokens, question);
       }
@@ -120,12 +121,13 @@ export class DeciderInferenceEngine {
     state: unknown,
     tokens: Set<string>,
     _question: Extract<DecisionQuestion, { type: "noul" }>,
+    precomputedFeats?: Set<string>,
   ): NoulAnswer {
     // 1. Triage task (needs_you)
     if (qid === "needs_you" || qid === "urgent" || qid === "action_needed") {
       let score = this.weights.triageWeights.bias;
       const fullText = typeof state === "string" ? state : JSON.stringify(state);
-      const feats = extractFeatures(fullText);
+      const feats = precomputedFeats ? new Set(precomputedFeats) : extractFeatures(fullText);
 
       // Add header features if present
       const stateObj = (typeof state === "object" && state !== null) ? (state as Record<string, any>) : {};
@@ -156,7 +158,7 @@ export class DeciderInferenceEngine {
     if (skillConfig) {
       let score = this.weights.toolWeights.bias + skillConfig.bias;
       const fullText = typeof state === "string" ? state : JSON.stringify(state);
-      const feats = extractFeatures(fullText);
+      const feats = precomputedFeats ?? extractFeatures(fullText);
 
       if (skillConfig.tokens && Object.keys(skillConfig.tokens).length > 0) {
         for (const f of feats) {
@@ -211,6 +213,7 @@ export class DeciderInferenceEngine {
     state: unknown,
     tokens: Set<string>,
     question: Extract<DecisionQuestion, { type: "choice" }>,
+    precomputedFeats?: Set<string>,
   ): ChoiceAnswer {
     const criteriaKeys = Object.keys(question.criteria);
     const rawScores: Record<string, number> = {};
@@ -222,7 +225,7 @@ export class DeciderInferenceEngine {
     // 1. Safety verdict choice: proceed / needs_approval / hand_off
     if (qid === "verdict" && criteriaKeys.includes("proceed")) {
       const fullText = typeof state === "string" ? state : JSON.stringify(state);
-      const feats = extractFeatures(fullText);
+      const feats = precomputedFeats ?? extractFeatures(fullText);
       const tokenWeights = this.weights.safetyWeights.tokens;
 
       for (const key of criteriaKeys) {
@@ -343,7 +346,7 @@ export class DeciderInferenceEngine {
 
     if (routingTokens && Object.keys(routingTokens).length > 0) {
       const fullText = typeof state === "string" ? state : JSON.stringify(state);
-      const feats = extractFeatures(fullText);
+      const feats = precomputedFeats ?? extractFeatures(fullText);
       for (const key of criteriaKeys) {
         let score = (this.weights.routingWeights.bias[key] ?? 0);
         const classWeights = routingTokens[key];
