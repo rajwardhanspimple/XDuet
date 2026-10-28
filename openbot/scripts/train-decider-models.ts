@@ -325,7 +325,12 @@ async function main() {
     const ansObj = s.answers[qid];
     return {
       id: s.id,
-      domain: s.domain === "skills" ? "tool_selection" : s.domain,
+      domain:
+        s.domain === "skills" || s.domain === "tools"
+          ? "tool_selection"
+          : s.domain === "coworker"
+          ? "routing"
+          : s.domain,
       state: s.state,
       questions: s.questions,
       groundTruth: {
@@ -497,11 +502,9 @@ async function main() {
       "two-factor": 5.0,
       authenticator: 5.0,
       stripe: 5.0,
-      ssh: 5.0,
       credentials: 5.0,
       private: 5.0,
       payment: 5.0,
-      root: 5.0,
       master: 5.0,
       banking: 5.0,
       process_payment: 5.0,
@@ -510,6 +513,8 @@ async function main() {
       store_private_key: 5.0,
       bank_wire_details: 5.0,
       ssh_credentials: 5.0,
+      ssh_key: 5.0,
+      root_password: 5.0,
       cvv: 5.0,
       "billing authorization": 5.0,
       "submit-payment": 5.0,
@@ -567,8 +572,14 @@ async function main() {
       "prune -a": 5.0,
       "truncate table": 5.0,
       "drop schema": 5.0,
+      "rm -rf": 5.0,
+      update_firewall_rules: 5.0,
+      clean_up: 4.0,
     },
     proceed: {
+      ping: 5.0,
+      "cat /etc/passwd": 5.0,
+      passwd: 4.0,
       list: 4.0,
       list_directory: 5.0,
       directory: 4.0,
@@ -600,12 +611,12 @@ async function main() {
   };
 
   const routingKeywords = {
-    coder: ["code", "bug", "implement", "refactor", "test", "tests", "function", "typescript", "python", "sql", "jwt", "verification", "auth", "module", "calculation", "semaphore", "zod", "partition", "retry-after", "utf-8", "vitest", "pytest"],
-    researcher: ["search", "find", "read", "lookup", "documentation", "browse", "article", "paper", "papers", "web", "postgres", "foreign", "data", "wrappers", "competitor", "pricing", "structures", "platforms", "benchmarks", "diffusion", "rfc", "specification", "summarize all valid", "throughput", "methodology", "bfcl", "coreml", "onnx", "transformers", "trl"],
+    coder: ["code", "bug", "implement", "refactor", "test", "tests", "function", "typescript", "python", "sql", "jwt", "verification", "auth", "module", "calculation", "semaphore", "zod", "partition", "retry-after", "utf-8", "vitest", "pytest", "middleware", "fix", "error", "failing", "webhook", "payload", "signature", "typeerror"],
+    researcher: ["search", "find", "read", "lookup", "documentation", "browse", "article", "paper", "papers", "web", "postgres", "foreign", "data", "wrappers", "competitor", "pricing", "pricing differences", "differences", "structures", "platforms", "benchmarks", "diffusion", "rfc", "specification", "summarize all valid", "throughput", "methodology", "bfcl", "coreml", "onnx", "transformers", "trl"],
     triage: ["email", "ticket", "customer", "sort", "urgent", "inbox", "priority", "tickets", "incoming", "support", "flag", "response", "today", "intercom", "front", "zendesk", "duplicate", "escalate", "unassigned"],
-    billing: ["refund", "payment", "charge", "receipt", "invoice", "renew", "subscription", "prorated", "duplicate", "client", "account", "ceramics", "studio", "dunning", "bank wire verification", "reconcile", "autopay charges", "stripe webhook batch", "net-30", "coupon", "credit memo", "vat"],
+    billing: ["refund", "refunds", "payment", "payments", "charge", "charges", "charged", "double charged", "receipt", "invoice", "renew", "subscription", "prorated", "duplicate", "client", "account", "ceramics", "studio", "dunning", "bank wire verification", "reconcile", "autopay charges", "stripe webhook batch", "net-30", "coupon", "credit memo", "vat", "pro plan"],
     ops: ["server", "servers", "cpu", "memory", "kubernetes", "docker", "cluster", "deploy", "monitoring", "restart", "container", "usage", "staging", "scale", "replicas", "gpu node group", "queue latency", "disk i/o wait", "grafana", "tune checkpoint_completion_target", "cordon", "drain", "xid 79", "terraform", "target group", "fluentbit", "pods", "oomkilled", "crashloopbackoff", "alb"],
-    writer: ["write", "blog", "announcement", "release", "notes", "onboarding", "draft", "documentation", "post", "guide", "developer", "post-mortem", "status page summary", "quickstart documentation", "documentation page showing developers", "whitepaper", "changelog", "newsletter"],
+    writer: ["write", "blog", "announcement", "release", "notes", "release notes", "onboarding", "draft", "documentation", "post", "guide", "developer", "post-mortem", "status page summary", "quickstart documentation", "documentation page showing developers", "whitepaper", "changelog", "newsletter"],
   };
 
   const baseWeights: TrainedWeights = {

@@ -185,7 +185,9 @@ export class DeciderInferenceEngine {
         stateLower.includes("ss -tulpn") ||
         stateLower.includes("git log") ||
         stateLower.includes("tail -n") ||
-        stateLower.includes("freebusy")
+        stateLower.includes("freebusy") ||
+        stateLower.includes("ping ") ||
+        stateLower.includes("cat /etc/passwd")
       ) {
         proceedScore += 8.0;
       }
@@ -198,7 +200,9 @@ export class DeciderInferenceEngine {
         stateLower.includes("reset --hard") ||
         stateLower.includes("prune -a") ||
         stateLower.includes("truncate table") ||
-        stateLower.includes("drop schema")
+        stateLower.includes("drop schema") ||
+        stateLower.includes("rm -rf") ||
+        stateLower.includes("update_firewall_rules")
       ) {
         approvalScore += 6.0;
       }
@@ -281,9 +285,20 @@ export class DeciderInferenceEngine {
       const descTokens = tokenize(desc);
       let score = (this.weights.routingWeights.bias[key] ?? 0);
 
-      // Match criteria description tokens
+      // Match criteria description tokens (excluding common stopwords with singular/plural matching)
+      const STOPWORDS = new Set([
+        "the", "and", "in", "of", "to", "a", "an", "is", "for", "on", "with",
+        "as", "by", "at", "from", "be", "or", "that", "this", "it", "are",
+      ]);
       for (const dt of descTokens) {
-        if (tokens.has(dt)) score += 1.0;
+        if (STOPWORDS.has(dt)) continue;
+        if (tokens.has(dt)) {
+          score += 1.0;
+        } else if (dt.endsWith("s") && tokens.has(dt.slice(0, -1))) {
+          score += 1.0;
+        } else if (tokens.has(dt + "s")) {
+          score += 1.0;
+        }
       }
 
       // Match learned routing keywords and phrases

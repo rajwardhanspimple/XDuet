@@ -46,23 +46,29 @@ def build_section_1_triage(target_count: int = 1000) -> List[Dict[str, Any]]:
     half = target_count // 2
     positives, negatives = [], []
 
-    # 1A. Pull from `tunedtensor/email-triage-v1` and `weijianzhg/email-triage-action-seed`
+    # 1A. Pull from real-world open corpora if available
     if HF_AVAILABLE:
-        for repo in ["tunedtensor/email-triage-v1", "weijianzhg/email-triage-action-seed"]:
+        for repo in ["tunedtensor/email-triage-v1", "weijianzhg/email-triage-action-seed", "SetFit/enron_spam"]:
             try:
                 ds = load_dataset(repo, split="train")
                 for row in ds:
                     subj = str(row.get("subject") or row.get("title") or "").strip()
-                    body = str(row.get("body") or row.get("snippet") or row.get("text") or "").strip()
+                    body = str(row.get("body") or row.get("snippet") or row.get("text") or row.get("message") or "").strip()
                     sender = str(row.get("sender") or row.get("from") or "contact@enterprise.com").strip()
+                    is_spam = row.get("label", 0) == 1
                     decision = str(row.get("decision") or row.get("action") or row.get("urgency") or "").lower()
                     if not subj or not body:
                         continue
-                    is_urgent = any(k in decision for k in ["reply", "escalate", "critical", "high", "urgent", "1", "true"])
+                    text_lower = f"{subj} {body}".lower()
+                    urgent_kws = ["urgent", "asap", "deadline", "signature", "payment", "invoice", "overdue", "shipment", "action required"]
+                    is_urgent = any(k in decision or k in text_lower for k in urgent_kws) and not is_spam
                     if is_urgent and len(positives) < half:
-                        positives.append((sender, subj, body, {"Auto-Submitted": "no"}))
-                    elif not is_urgent and len(negatives) < half:
-                        negatives.append((sender, subj, body, {"Auto-Submitted": "auto-generated"}))
+                        positives.append((sender, subj, body[:500], {"Auto-Submitted": "no"}))
+                    elif (not is_urgent or is_spam) and len(negatives) < half:
+                        headers = {"Auto-Submitted": "auto-generated"}
+                        if "unsubscribe" in text_lower:
+                            headers["List-Unsubscribe"] = "<mailto:unsub@domain.com>"
+                        negatives.append((sender, subj, body[:500], headers))
             except Exception as e:
                 print(f"[INFO] Skipping {repo}: {e}")
 
@@ -420,3 +426,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

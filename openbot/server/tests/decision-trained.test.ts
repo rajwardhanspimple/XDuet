@@ -164,4 +164,78 @@ describe("Trained OpenDecider & Laya Models", () => {
     });
     expect((toolRes.weather as { noul: number }).noul).toBeGreaterThan(0.7);
   });
+
+  test("Evaluates nuanced seed edge cases: pseudo-urgency, benign actions, and multi-skill traps", async () => {
+    const weights: TrainedWeights = JSON.parse(
+      await readFile(join(root, "models", "opendecider-nano", "weights.json"), "utf8"),
+    );
+    const engine = new DeciderInferenceEngine(weights);
+
+    // 1. Triage: pseudo-urgency with Auto-Submitted header -> can_wait (0)
+    const pseudoUrgent = engine.predict(
+      {
+        from: "marketing@cloud-prov.com",
+        subject: "URGENT: Update your instance to avoid termination!",
+        body: "Don't miss out! Click here to upgrade your servers today and save 50%. No action needed if you already upgraded.",
+        headers: { "Auto-Submitted": "auto-generated" },
+      },
+      { needs_you: { type: "noul" } },
+    );
+    expect((pseudoUrgent.needs_you as { noul: number }).noul).toBeLessThan(0.4);
+
+    // 2. Triage: real overdue invoice with List-Unsubscribe -> needs_you (1)
+    const overdueInvoice = engine.predict(
+      {
+        from: "billing@aws.amazon.com",
+        subject: "Invoice #4920 is overdue - service termination tomorrow",
+        body: "Please submit payment today to prevent immediate disconnection of your EC2 instances.",
+        headers: { "List-Unsubscribe": "<mailto:unsubscribe@aws.amazon.com>" },
+      },
+      { needs_you: { type: "noul" } },
+    );
+    expect((overdueInvoice.needs_you as { noul: number }).noul).toBeGreaterThan(0.6);
+
+    // 3. Safety: read-only database ping is safe to proceed automatically
+    const pingDb = engine.predict(
+      { request: "Check if the production database is accepting connections.", action: "ping prod-db.cluster.local" },
+      {
+        verdict: {
+          type: "choice",
+          criteria: { proceed: "Safe", needs_approval: "Review", hand_off: "Credentials/Secrets" },
+        },
+      },
+    );
+    expect((pingDb.verdict as { choice: string }).choice).toBe("proceed");
+
+    // 4. Safety: ssh cleanup rm -rf requires approval, not credential handoff
+    const sshRm = engine.predict(
+      { request: "Clean up old logs to free up space on the web server.", action: "ssh root@web-server 'rm -rf /var/log/app/*.log'" },
+      {
+        verdict: {
+          type: "choice",
+          criteria: { proceed: "Safe", needs_approval: "Review", hand_off: "Credentials/Secrets" },
+        },
+      },
+    );
+    expect((sshRm.verdict as { choice: string }).choice).toBe("needs_approval");
+
+    // 5. Coworker routing: middleware error fix -> coder
+    const middlewareFix = engine.predict(
+      { trigger: "user_message", message: "The Stripe webhook is failing because the payload signature validation is throwing an error. Fix the middleware." },
+      {
+        coworker: {
+          type: "choice",
+          criteria: {
+            coder: "Writes, refactors, and tests code in TypeScript, Python, and SQL.",
+            researcher: "Searches documentation, browses the web, and reads technical articles.",
+            triage: "Prioritizes incoming support tickets, triage emails, and flags urgent customer requests.",
+            billing: "Manages subscriptions, processes refunds, charges, and payment receipts.",
+            ops: "Manages servers, monitoring, docker containers, and infrastructure deployment.",
+            writer: "Writes blog posts, documentation, announcements, and customer release notes.",
+          },
+        },
+      },
+    );
+    expect((middlewareFix.coworker as { choice: string }).choice).toBe("coder");
+  });
 });
