@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=3, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Per-device batch size")
     parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
+    parser.add_argument("--max_seq_length", type=int, default=32768, help="Max context sequence length in tokens (default: 32k, supports up to 128k)")
     args = parser.parse_args()
 
     print(f"==================================================")
@@ -32,6 +33,7 @@ def main():
     print(f"Base model:       {args.model}")
     print(f"Dataset:          {args.data}")
     print(f"Target directory: {args.output}")
+    print(f"Max Context Tokens:{args.max_seq_length} (Long-Context)")
     print(f"Epochs:           {args.epochs}")
     print(f"==================================================")
 
@@ -102,7 +104,7 @@ def main():
         model=model,
         train_dataset=formatted_dataset,
         dataset_text_field="text",
-        max_seq_length=1024,
+        max_seq_length=args.max_seq_length,
         tokenizer=tokenizer,
         args=training_args,
     )

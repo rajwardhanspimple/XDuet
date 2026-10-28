@@ -60,3 +60,4 @@ if __name__ == "__main__":
         compile_jsonl_files(records, out_dir=out_dir)
     else:
         print(f"File not found: {golden_path}")
+

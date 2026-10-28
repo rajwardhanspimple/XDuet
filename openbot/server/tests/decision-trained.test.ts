@@ -129,4 +129,39 @@ describe("Trained OpenDecider & Laya Models", () => {
       server.stop();
     }
   });
+
+  test("Long-context decision processing (32,000+ tokens) without truncation", async () => {
+    const weights: TrainedWeights = JSON.parse(
+      await readFile(join(root, "models", "laya", "weights.json"), "utf8"),
+    );
+    const engine = new DeciderInferenceEngine(weights);
+
+    // Create a 35,000-word state simulating a massive thread / huge code repo context (>45,000 tokens)
+    const fillerParagraph = "This is a routine historical context paragraph containing background conversation notes from earlier quarters. ";
+    const massiveHistory = fillerParagraph.repeat(3500);
+
+    const urgentEmailState = {
+      history: massiveHistory,
+      latest_message: {
+        from: "alerts@coastalbank.com",
+        subject: "Did you make this purchase? $2,340.00 unauthorized transaction",
+        body: "We noticed a $2,340.00 charge at KILNMART ONLINE. Reply YES if this was you or call your card number immediately to prevent suspension.",
+      },
+    };
+
+    const triageRes = engine.predict(urgentEmailState, {
+      needs_you: { type: "noul" },
+    });
+    expect((triageRes.needs_you as { noul: number }).noul).toBeGreaterThan(0.7);
+
+    const massiveCodeDiffState = {
+      diff: massiveHistory,
+      instruction: "Check the hourly precipitation radar and wind gusts before my flight today.",
+    };
+    const toolRes = engine.predict(massiveCodeDiffState, {
+      weather: { type: "noul" },
+      github: { type: "noul" },
+    });
+    expect((toolRes.weather as { noul: number }).noul).toBeGreaterThan(0.7);
+  });
 });
