@@ -25,23 +25,32 @@ async function main() {
     domainStats[d].total += 1;
 
     const pred = engine.predict(s.state, s.questions);
-    const qid = Object.keys(s.answers)[0];
-    const exp = s.answers[qid];
-    const act = pred[qid];
-
-    let isMatch = false;
-    if (exp.type === "noul") {
-      const p = (act as { noul: number })?.noul >= 0.5 ? 1 : 0;
-      isMatch = p === exp.noul;
-    } else if (exp.type === "choice") {
-      isMatch = (act as { choice: string })?.choice === exp.choice;
+    let isMatch = true;
+    for (const [qid, exp] of Object.entries(s.answers as Record<string, any>)) {
+      const act = pred[qid];
+      if (!act) {
+        isMatch = false;
+        break;
+      }
+      if (exp.type === "noul") {
+        const p = (act as { noul: number })?.noul >= 0.5 ? 1 : 0;
+        if (p !== exp.noul) {
+          isMatch = false;
+          break;
+        }
+      } else if (exp.type === "choice") {
+        if ((act as { choice: string })?.choice !== exp.choice) {
+          isMatch = false;
+          break;
+        }
+      }
     }
 
     if (isMatch) {
       correct += 1;
       domainStats[d].correct += 1;
     } else {
-      console.log(`[MISMATCH] ${s.id} (${s.domain}): expected`, exp, "got", act);
+      console.log(`[MISMATCH] ${s.id} (${s.domain}): expected`, s.answers, "got", pred);
     }
   }
 

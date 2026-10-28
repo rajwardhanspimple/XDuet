@@ -131,6 +131,25 @@ export class DeciderInferenceEngine {
       const rawText = typeof state === "string" ? state : `${subj} ${body} ${JSON.stringify(state)}`;
       const cleanLower = rawText.toLowerCase();
 
+      // Auto-resolved incident clause: airline/system already handled it automatically
+      const isAutoResolved = /automatically rebooked|already been rebooked|auto-rebooked|has been rebooked|already been automatically|no further action needed by/i.test(cleanLower);
+      if (isAutoResolved) {
+        return { type: "noul", noul: 0.01 };
+      }
+
+      // Code syntax vs Authentication code: CSS/JS code discussion is not a login OTP
+      const isCodeSnippet = /\b(code snippet|css code|html code|js code|\.btn\s*\{|function\s*\(|const\s+\w+\s*=)\b/i.test(cleanLower);
+      if (isCodeSnippet && !/\b(\d{5,8}|valid for \d+|expires in \d+|single-use|otp|2fa)\b/i.test(cleanLower)) {
+        return { type: "noul", noul: 0.01 };
+      }
+
+      // Forwarded crisis: critical incident in forwarded subject or body overrides top-level "FYI"
+      const isForwardedCrisis = /fwd?:\s*(critical|urgent|outage|breach|action required|payment failed|unauthorized)/i.test(subj) ||
+        (/fyi/i.test(body) && /(database breach|unauthorized exfiltration|containment needed|production down|ransomware)/i.test(cleanLower));
+      if (isForwardedCrisis) {
+        return { type: "noul", noul: 0.99 };
+      }
+
       const headers = (typeof stateObj.headers === "object" && stateObj.headers !== null) ? stateObj.headers : {};
       const headerLabels = String(headers["X-Gmail-Labels"] ?? headers["x-gmail-labels"] ?? "").toLowerCase();
 
@@ -198,8 +217,30 @@ export class DeciderInferenceEngine {
     const skillSlug = qid.replace(/^skill:/, "");
     const skillConfig = this.weights.toolWeights.skills[skillSlug] ?? this.weights.toolWeights.skills[qid];
     if (skillConfig) {
-      let score = this.weights.toolWeights.bias + skillConfig.bias;
       const fullText = typeof state === "string" ? state : JSON.stringify(state);
+      const cleanLower = fullText.toLowerCase();
+
+      // Check for explicit negative constraints on this tool
+      const negRegex = new RegExp(
+        `\\b(do not|don't|dont|never|avoid|without|skip)\\s+(touch|use|query|access|modify|call|invoke)?\\s*(the\\s+)?(${skillSlug}|${qid}|sql)\\b`,
+        "i"
+      );
+      if (negRegex.test(cleanLower)) {
+        return { type: "noul", noul: 0.01 };
+      }
+
+      // Metaphor / Idiom disambiguation
+      if (skillSlug === "weather" && /\bweathering the storm\b/i.test(cleanLower)) {
+        return { type: "noul", noul: 0.01 };
+      }
+      if (skillSlug === "github" && /\b(commit our (git )?changes|git commit)\b/i.test(cleanLower)) {
+        return { type: "noul", noul: 0.99 };
+      }
+      if (skillSlug === "memory" && /\b(update (our )?(local )?memory|save to memory|store in memory|remember that|remember my|memory cache)\b/i.test(cleanLower)) {
+        return { type: "noul", noul: 0.99 };
+      }
+
+      let score = this.weights.toolWeights.bias + skillConfig.bias;
       const feats = precomputedFeats ?? extractFeatures(fullText);
 
       if (skillConfig.tokens && Object.keys(skillConfig.tokens).length > 0) {
@@ -319,9 +360,14 @@ export class DeciderInferenceEngine {
         stateLower.includes("update_firewall_rules") ||
         stateLower.includes("fail2ban") ||
         stateLower.includes("helm rollback") ||
-        stateLower.includes("kubectl apply")
+        stateLower.includes("kubectl apply") ||
+        stateLower.includes("reboot") ||
+        stateLower.includes("shutdown") ||
+        stateLower.includes("poweroff") ||
+        stateLower.includes("systemctl restart") ||
+        stateLower.includes("git clean")
       ) {
-        rawScores["needs_approval"] = (rawScores["needs_approval"] ?? 0) + 6.0;
+        rawScores["needs_approval"] = Math.max((rawScores["needs_approval"] ?? 0) + 10.0, (rawScores["hand_off"] ?? 0) + 5.0);
       }
 
       if (
