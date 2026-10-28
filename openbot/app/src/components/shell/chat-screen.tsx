@@ -29,6 +29,7 @@ import {
 import { useMarkOpenChannelRead } from "@/lib/channels/mark-read";
 import { localDateOf } from "@/lib/channels/morning-brief";
 import { client } from "@/lib/client";
+import { appConfig } from "@/lib/generated/application-config";
 import { ONGOING_SEARCH_LIMIT, ongoingChannel } from "@/lib/channels/ongoing";
 import {
   type AgentChannel,
@@ -285,8 +286,10 @@ function FirstMessage({
   useFirstDayGreeting({
     // Whose first day, with which Bot. Waits for the account and for whether the Bot can read their
     // mail; an account that failed to load still greets, and a state that failed reads as no mail.
+    // A local install has no mail to read and no Intelligence to greet through, so it opens on an
+    // empty conversation and lets the person speak first.
     claimKey:
-      me.isPending || gmail.isPending
+      appConfig.localMode || me.isPending || gmail.isPending
         ? null
         : `${me.data?.id ?? "unknown"}:${bot.id}`,
     clear: () => !begun.current && !typed.current,

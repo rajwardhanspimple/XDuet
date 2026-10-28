@@ -1,9 +1,17 @@
 import type { Message, RunAgentInput } from "@ag-ui/client";
 import { type AbstractAgent, HttpAgent } from "@ag-ui/client";
-import type { BuiltInAgentConfiguration } from "@copilotkit/runtime/v2";
+import { createOpenAI } from "@ai-sdk/openai";
+import type {
+  BuiltInAgentClassicConfig,
+  BuiltInAgentConfiguration,
+} from "@copilotkit/runtime/v2";
 import {
+  type AgentRunner,
   type CopilotKitIntelligence,
   CopilotRuntime,
+  CopilotSseRuntime,
+  InMemoryAgentRunner,
+  supportsLocalThreadEndpoints,
 } from "@copilotkit/runtime/v2";
 import { createCopilotHonoHandler } from "@copilotkit/runtime/v2/hono";
 import { PROVENANCE_GUIDANCE } from "@openbot/shared/bot-prompt";
@@ -75,6 +83,7 @@ import {
 } from "./plugins/selection";
 import { grantedToolGuidance } from "./plugins/tools";
 import { runtimeTelemetryProperties } from "./telemetry";
+import { createLocalThreadLock } from "./threads/local-lock";
 import { UNTRUSTED_GUIDANCE } from "./untrusted-content";
 
 /**
@@ -364,6 +373,34 @@ export function standingInstructionsGuidance(
   ].join("\n\n");
 }
 
+/**
+ * The model object for a built-in Bot.
+ *
+ * A string like `openai/mercury-3` is resolved by the runtime's own provider, which chooses the
+ * OpenAI Responses API for OpenAI models. A third-party endpoint speaking Chat Completions is not
+ * required to implement `/v1/responses`, and Inception's does not. When `OPENAI_BASE_URL` is set,
+ * build the provider ourselves and ask for `.chat()` explicitly, which is the endpoint Mercury 3
+ * serves.
+ */
+function builtInModelFor(
+  model: RuntimeModel,
+  apiKey: string | null,
+):
+  | string
+  | Extract<
+      BuiltInAgentClassicConfig["model"],
+      { specificationVersion: "v3" }
+    > {
+  const baseURL = process.env.OPENAI_BASE_URL?.trim();
+  if (model.provider !== "openai" || !apiKey || !baseURL) {
+    return `${model.provider}/${model.defaultModel}`;
+  }
+  return createOpenAI({
+    apiKey,
+    baseURL,
+  }).chat(model.defaultModel);
+}
+
 export function builtInAgentConfiguration(
   agent: RegisteredBuiltInAgent,
   model: RuntimeModel,
@@ -414,6 +451,7 @@ export function builtInAgentConfiguration(
   }
 
   const standing = standingInstructionsGuidance(standingInstructions);
+  const languageModel = planModel ?? builtInModelFor(model, apiKey);
   const allTools = [
     ...tools,
     ...(learnedSkills?.tools.map((tool) => ({
@@ -432,11 +470,8 @@ export function builtInAgentConfiguration(
      */
     model:
       allTools.length > 0
-        ? endingTurns(
-            planModel ?? `${model.provider}/${model.defaultModel}`,
-            apiKey ?? undefined,
-          )
-        : (planModel ?? `${model.provider}/${model.defaultModel}`),
+        ? endingTurns(languageModel, apiKey ?? undefined)
+        : languageModel,
     /*
      * The package's role, then the person's own standing instructions, then what this Bot actually
      * holds, then the computer.
@@ -952,6 +987,7 @@ async function buildAgent(
       skills,
       text: latestUserText(input.messages),
       choose: narrowing.choose,
+      ...(narrowing.decide ? { decide: narrowing.decide } : {}),
       signal,
       ...(narrowing.floor === undefined ? {} : { floor: narrowing.floor }),
     });
@@ -1120,6 +1156,12 @@ export type ToolSelection = {
   loadSkills: (botId: string) => Promise<SelectableSkill[]>;
   /** Pass one. Ordinary failures skip narrowing; cancellation stops the run. */
   choose: (prompt: string, signal?: AbortSignal) => Promise<string | null>;
+  /** A typed decision over the same skills; when present it replaces `choose`. */
+  decide?: (input: {
+    text: string;
+    skills: readonly SelectableSkill[];
+    signal?: AbortSignal;
+  }) => Promise<string[] | null>;
   /** Writes the discovery row. Never allowed to fail a run. */
   record?: (botId: string, selection: Selection<GrantedTool>) => Promise<void>;
   /** Overrides the default catalogue size below which nothing is narrowed. */
@@ -1737,8 +1779,13 @@ export function mountCopilotRuntime(
       busy: boolean;
     }) => void | Promise<void>;
     learningSettings?: LearningSettingsStore;
+    /** The local runner to share with headless turns. Ignored in Intelligence mode. */
+    runner?: AgentRunner;
   } = {},
 ) {
+  if (config.runtime.mode === "local") {
+    return mountLocalCopilotRuntime(config, resolver, identifyActor, options);
+  }
   const { intelligence } = config.runtime;
   const { basePath = "/api/copilotkit", onRunBusy, learningSettings } = options;
 
@@ -1855,6 +1902,8 @@ export function mountCopilotRuntime(
   return {
     handler: createCopilotHonoHandler({ runtime, basePath }),
     learning,
+    /** The local runner, when this deployment has one. Intelligence keeps its own inside the runtime. */
+    runner: undefined as AgentRunner | undefined,
     /**
      * How to reach the platform's runner, exactly as the runtime reaches it.
      *
@@ -1898,6 +1947,80 @@ export function mountCopilotRuntime(
         { messages: [] } as Read,
       );
       return read.messages;
+    },
+  };
+}
+
+/**
+ * The same runtime surface without CopilotKit Intelligence.
+ *
+ * `CopilotSseRuntime` keeps the run, connect, stop and agent routes, and the in-memory runner
+ * keeps the thread routes the React packages already call. That is enough for the same UI. The
+ * limitation is stated rather than hidden: threads and messages live in this process, so a restart
+ * forgets them. The Postgres runner in the migration plan replaces the runner without changing any
+ * route above it.
+ */
+function mountLocalCopilotRuntime(
+  config: DeploymentConfig,
+  resolver: ActorAgentResolver,
+  identifyActor: IdentifyActor,
+  options: {
+    basePath?: string;
+    onRunBusy?: (input: {
+      threadId: string;
+      runId: string;
+      busy: boolean;
+    }) => void | Promise<void>;
+    runner?: AgentRunner;
+  } = {},
+) {
+  const { basePath = "/api/copilotkit", onRunBusy } = options;
+  const runner = options.runner ?? new InMemoryAgentRunner();
+
+  const agentFor = async (input: {
+    actor: AgentActor;
+    botId: string;
+    initiator?: AuditInitiator;
+  }): Promise<AbstractAgent | null> => {
+    try {
+      return await resolver.resolveAgentForActor(input.actor, input.botId, {
+        initiator: input.initiator,
+      });
+    } catch (error) {
+      if (error instanceof CoworkerUnavailableError) return null;
+      throw error;
+    }
+  };
+
+  const runtime = new CopilotSseRuntime({
+    runner,
+    telemetryProperties: {
+      ...runtimeTelemetryProperties(config.accessibility),
+      ...desktopTelemetryProperties(),
+    },
+    ...(config.generativeUi ? { openGenerativeUI: true } : {}),
+    a2ui: { enabled: config.generativeUi },
+    agents: createRequestAgents(identifyActor, resolver) as never,
+  });
+
+  return {
+    handler: createCopilotHonoHandler({ runtime, basePath }),
+    learning: undefined,
+    runner,
+    /**
+     * No platform runner to reach. A local hop uses the same runner the browser does, which is why
+     * `handoff-wiring.ts` prefers `runner` over this function.
+     */
+    runnerConnection: (): never => {
+      throw new Error(
+        "This deployment has no Intelligence runner connection; use the local runner.",
+      );
+    },
+    threadLock: createLocalThreadLock({ onRunBusy }),
+    agentFor,
+    history: async (input: { threadId: string; actorId: string }) => {
+      if (!supportsLocalThreadEndpoints(runner)) return [];
+      return runner.getThreadMessages(input.threadId);
     },
   };
 }

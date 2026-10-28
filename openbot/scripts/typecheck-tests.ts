@@ -63,7 +63,7 @@ const DIAGNOSTIC = /^(\S[^(]*)\((\d+),\d+\): error (TS\d+): (.*)$/;
 
 function runTsc(): string {
   const result = Bun.spawnSync({
-    cmd: ["bunx", "tsc", "--noEmit", "--pretty", "false", "-p", project],
+    cmd: ["bun", "x", "tsc", "--noEmit", "--pretty", "false", "-p", project],
     cwd: repoRoot,
     // The suite outgrew Node's default heap on GitHub's runners: tsc died with "heap out of
     // memory" on most pull requests, which reads as a type error nobody made.
@@ -87,6 +87,9 @@ interface Diagnostic {
 
 function parse(output: string): Diagnostic[] {
   const errors: Diagnostic[] = [];
+  // tsc prints forward slashes even on Windows, while `repoRoot` uses the host separator. Normalise
+  // the prefix before comparing so a checkout path does not read as a new error on one platform.
+  const repoPrefix = `${repoRoot.replaceAll("\\", "/")}/`;
   for (const raw of output.split("\n")) {
     const match = DIAGNOSTIC.exec(raw.trimEnd());
     if (!match) continue;
@@ -94,10 +97,7 @@ function parse(output: string): Diagnostic[] {
     // tsc prints the project-relative path in the location, but absolute paths inside some
     // messages (TS6142 names the resolved file). Strip the checkout prefix so the baseline is
     // the same on a laptop, in a worktree and on CI.
-    const key = `${file}: error ${code}: ${message}`.replaceAll(
-      `${repoRoot}/`,
-      "",
-    );
+    const key = `${file}: error ${code}: ${message}`.replaceAll(repoPrefix, "");
     errors.push({ key, line: Number(line) });
   }
   return errors.sort((a, b) =>

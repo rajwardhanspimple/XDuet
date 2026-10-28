@@ -3,6 +3,7 @@ import "./telemetry";
 import type { AbstractAgent } from "@ag-ui/client";
 import {
   CopilotKitIntelligence,
+  InMemoryAgentRunner,
   IntelligenceAgentRunner,
 } from "@copilotkit/runtime/v2";
 import { COMPUTER_GUIDANCE } from "@openbot/shared/bot-prompt";
@@ -97,6 +98,7 @@ import {
   createChannelStore,
   expireChannelBusyClaims,
 } from "./channels/routes";
+import { localChannelTitle } from "./channels/local-title";
 import { createStallGuard } from "./channels/stall-guard";
 import {
   forgetSettledSummaries,
@@ -137,6 +139,9 @@ import {
   resolveModelApiKey,
 } from "./credentials";
 import { createDatabase } from "./db/client";
+import { createDecisionClient } from "./decision/client";
+import { createDecisionReviewer } from "./decision/safety";
+import { createDecisionToolSelector } from "./decision/tool-selection";
 import {
   brokeredConnections,
   channelAgents,
@@ -281,6 +286,7 @@ import type { TaskStarter } from "./openduet/tasks";
 import { createOpenDuetTools, createTaskIntake } from "./openduet/wiring";
 import { reportIntelligenceEntitlement } from "./intelligence-entitlement-check";
 import { createSelfHostBanner } from "./self-host-banner";
+import { createLocalIntelligence } from "./threads/local-intelligence";
 import { createTeamBots } from "./team-bots/team-bots";
 import {
   createPackageStatusReader,
@@ -368,64 +374,89 @@ const learningSettingsStore = createLearningSettingsStore(
   database,
   config.learning,
 );
-// Its own client, like the self-host banner's: the constructor opens nothing.
-const learningProbeIntelligence = createIntelligenceClient(
-  config.runtime.intelligence,
-);
 /*
- * Who can create the `openbot` container here: never the runtime key. A service token the operator
- * configured (local evaluation installs), or a CopilotKit CLI login on this machine, which is what a
- * laptop running `bun run start` has. Neither, and the log and Admin say exactly what to run instead.
+ * Local mode has no Intelligence client and nothing to probe. Learning is off rather than
+ * half-configured: a deployment without the platform that owns the containers cannot collect or
+ * deliver anything, and pretending otherwise would only produce failed background calls.
  */
-const learningApiOrigin = (() => {
-  try {
-    return intelligenceApiOrigin(config.runtime.intelligence.apiUrl);
-  } catch {
-    return undefined;
+const localRunner =
+  config.runtime.mode === "local" ? new InMemoryAgentRunner() : undefined;
+
+function localRunnerForLocalMode(): InMemoryAgentRunner {
+  if (!localRunner) {
+    throw new Error(
+      "A local runner is only built when OPENBOT_LOCAL_MODE is on.",
+    );
   }
-})();
-const learningCanCreate =
-  learningApiOrigin !== undefined &&
-  (config.learningSetup !== undefined || cliLoginPresent());
-const learningAutoAssign = createLearningAutoAssign({
-  enabled: config.learningAutoAssign,
-  store: learningSettingsStore,
-  probe: (containerId) =>
-    probeLearningContainer(learningProbeIntelligence, containerId),
-  ...(learningApiOrigin
-    ? { instructions: learningSetupInstructions(learningApiOrigin) }
-    : {}),
-  ...(learningCanCreate && learningApiOrigin
-    ? {
-        create: () =>
-          ensureLearningContainer({
-            directory: process.cwd(),
-            apiUrl: learningApiOrigin,
-            nonInteractive: true,
-            key: keyIntelligence(
-              learningApiOrigin,
-              config.runtime.intelligence.apiKey,
-              config.runtime.intelligence.gatewayWsUrl,
-            ),
-            cliLogin: cliLoginPresent(),
-            ...(config.learningSetup
-              ? {
-                  serviceToken: {
-                    token: config.learningSetup.serviceToken,
-                    projectId: config.learningSetup.projectId,
-                  },
-                }
-              : {}),
-          }),
-      }
-    : {}),
-  audit: createAuditStore(database),
-});
-const learningSettings = withLearningAutoAssign(
-  learningSettingsStore,
-  learningAutoAssign,
-);
-learningAutoAssign.start();
+  return localRunner;
+}
+const learningAutoAssign =
+  config.runtime.mode === "intelligence"
+    ? (() => {
+        const intelligence = config.runtime.intelligence;
+        if (!intelligence) {
+          throw new Error(
+            "Intelligence settings are required in Intelligence mode.",
+          );
+        }
+        const learningProbeIntelligence =
+          createIntelligenceClient(intelligence);
+        /*
+         * Who can create the `openbot` container here: never the runtime key. A service token the
+         * operator configured (local evaluation installs), or a CopilotKit CLI login on this
+         * machine, which is what a laptop running `bun run start` has. Neither, and the log and
+         * Admin say exactly what to run instead.
+         */
+        const learningApiOrigin = (() => {
+          try {
+            return intelligenceApiOrigin(intelligence.apiUrl);
+          } catch {
+            return undefined;
+          }
+        })();
+        const learningCanCreate =
+          learningApiOrigin !== undefined &&
+          (config.learningSetup !== undefined || cliLoginPresent());
+        return createLearningAutoAssign({
+          enabled: config.learningAutoAssign,
+          store: learningSettingsStore,
+          probe: (containerId) =>
+            probeLearningContainer(learningProbeIntelligence, containerId),
+          ...(learningApiOrigin
+            ? { instructions: learningSetupInstructions(learningApiOrigin) }
+            : {}),
+          ...(learningCanCreate && learningApiOrigin
+            ? {
+                create: () =>
+                  ensureLearningContainer({
+                    directory: process.cwd(),
+                    apiUrl: learningApiOrigin,
+                    nonInteractive: true,
+                    key: keyIntelligence(
+                      learningApiOrigin,
+                      intelligence.apiKey,
+                      intelligence.gatewayWsUrl,
+                    ),
+                    cliLogin: cliLoginPresent(),
+                    ...(config.learningSetup
+                      ? {
+                          serviceToken: {
+                            token: config.learningSetup.serviceToken,
+                            projectId: config.learningSetup.projectId,
+                          },
+                        }
+                      : {}),
+                  }),
+              }
+            : {}),
+          audit: createAuditStore(database),
+        });
+      })()
+    : undefined;
+const learningSettings = learningAutoAssign
+  ? withLearningAutoAssign(learningSettingsStore, learningAutoAssign)
+  : learningSettingsStore;
+learningAutoAssign?.start();
 await initializeDevActorUser(database, config.singleUser);
 // The vault, built before the agent store because a customer's agent may sit behind a key and that
 // key belongs here rather than on the agent row. See agents/auth-header.ts.
@@ -724,6 +755,23 @@ const chooseSkills = createModelCompleter({
 });
 
 /*
+ * The typed decision model, when one is configured. Tool selection and safety are the two places
+ * this deployment uses it: both are classifications, both already have a safe fallback, and both
+ * are better served by one question with a probability than by a prose model asked to emit JSON.
+ */
+const decisionClient = config.decision
+  ? createDecisionClient(config.decision)
+  : undefined;
+const decisionToolSelector =
+  decisionClient && config.decision
+    ? createDecisionToolSelector(decisionClient, config.decision.toolThreshold)
+    : undefined;
+const approvalReview =
+  decisionClient && config.decision
+    ? createDecisionReviewer(decisionClient, config.decision.safetyThreshold)
+    : chooseSkills;
+
+/*
  * The pair a headless turn is driven through, built ONCE.
  *
  * Not the runtime's own pair: `mountCopilotRuntime` keeps its client and its runner inside
@@ -738,13 +786,16 @@ const chooseSkills = createModelCompleter({
  * connection, but its `threads` map is per instance, and a runner per turn would fragment the
  * already-running check that keeps two turns off one thread. See `toolkit/run-turn.ts`.
  */
-const routineIntelligence = observeIntelligenceAuthentication(
-  new CopilotKitIntelligence({
-    apiUrl: config.runtime.intelligence.apiUrl,
-    wsUrl: config.runtime.intelligence.gatewayWsUrl,
-    apiKey: config.runtime.intelligence.apiKey,
-  }),
-);
+const routineIntelligence =
+  config.runtime.mode === "intelligence"
+    ? observeIntelligenceAuthentication(
+        new CopilotKitIntelligence({
+          apiUrl: config.runtime.intelligence.apiUrl,
+          wsUrl: config.runtime.intelligence.gatewayWsUrl,
+          apiKey: config.runtime.intelligence.apiKey,
+        }),
+      )
+    : createLocalIntelligence(localRunnerForLocalMode());
 const approvalComputerTools = async (
   ownerUserId: string,
   agentId: string,
@@ -776,7 +827,7 @@ const approvalService = createServerApprovalService({
   authoriseQuestion,
   routineIntelligence,
   approvalComputerTools,
-  review: (prompt, signal) => chooseSkills(prompt, signal),
+  review: approvalReview,
   // Assigned further down, once delivery is wired.
   notify: (scope, input) => deliveryNotifications(scope, input),
 });
@@ -1306,9 +1357,13 @@ const hostAccessBroker = createHostAccessBroker(Date.now, {
 // tables when it is not; see memory/store.ts. Its own client, like the thread reader's: the
 // constructor opens nothing.
 const personalMemoryStore = createMemoryStore(database, {
-  intelligence: createIntelligenceMemory({
-    client: createIntelligenceClient(config.runtime.intelligence),
-  }),
+  ...(config.runtime.mode === "intelligence"
+    ? {
+        intelligence: createIntelligenceMemory({
+          client: createIntelligenceClient(config.runtime.intelligence),
+        }),
+      }
+    : {}),
 });
 const demonstrationStore = createDemonstrationStore(database);
 const demonstrationRecorder = createDemonstrationRecorder({
@@ -1647,6 +1702,7 @@ const selectionForActor = (actorId: string): ToolSelection => ({
   // never a second thing to configure. It throws on a missing key, which reads as "could not
   // choose" and leaves the whole catalogue offered.
   choose: chooseSkills,
+  ...(decisionToolSelector ? { decide: decisionToolSelector } : {}),
   record: async (botId, selection) => {
     await recordAuditEvent(bootAuditStore, {
       eventType: "mcp.tools_discovered",
@@ -1752,10 +1808,15 @@ const buildAgentFor = async ({
   }
   return agent;
 };
-const routineAgentRunner = new IntelligenceAgentRunner({
-  url: routineIntelligence.ɵgetRunnerWsUrl(),
-  authToken: routineIntelligence.ɵgetRunnerAuthToken(),
-});
+const routineAgentRunner =
+  config.runtime.mode === "intelligence"
+    ? new IntelligenceAgentRunner({
+        url: (routineIntelligence as CopilotKitIntelligence).ɵgetRunnerWsUrl(),
+        authToken: (
+          routineIntelligence as CopilotKitIntelligence
+        ).ɵgetRunnerAuthToken(),
+      })
+    : localRunnerForLocalMode();
 
 const routineRunner = createRoutineRunner({
   routineStore,
@@ -1843,6 +1904,7 @@ const copilotRuntime = mountCopilotRuntime(
         .catch(() => {});
     },
     learningSettings,
+    ...(localRunner ? { runner: localRunner } : {}),
   },
 );
 
@@ -2475,10 +2537,17 @@ const channelSummaries = {
   database,
   queue: createWorkQueue(database),
   transcript: routineIntelligence,
-  title: createChannelTitler({
-    model: runtimeModel.defaultModel,
-    resolveApiKey: resolveRuntimeModelApiKey,
-  }),
+  /*
+   * Local mode names a conversation from the person's own first line. The model titler is a
+   * separate small call that can be wrong in a way the transcript then repeats in the sidebar, and
+   * a local install has no spare service to answer it; the person's sentence is already a title.
+   */
+  title: config.localMode
+    ? async (excerpt: string) => localChannelTitle(excerpt)
+    : createChannelTitler({
+        model: runtimeModel.defaultModel,
+        resolveApiKey: resolveRuntimeModelApiKey,
+      }),
   owner: workOwner("summariser"),
 };
 repeatAfterEach(async () => {
@@ -2532,15 +2601,37 @@ auditRoutineStore(routineStore, bootAuditStore);
 
 // Asked only whether this deployment pays for Intelligence, for the self-host banner. Its own client
 // rather than the runtime's, the same as the thread reader: the constructor opens nothing.
-const selfHostBannerIntelligence = createIntelligenceClient(
-  config.runtime.intelligence,
-);
+const selfHostBannerIntelligence =
+  config.runtime.mode === "intelligence"
+    ? createIntelligenceClient(config.runtime.intelligence)
+    : undefined;
+
+/**
+ * The entitlement answer local mode gives every caller: none, and not retryable.
+ *
+ * The setup checklist and self-host banner both ask this. They must keep working without an
+ * Intelligence client, and "this deployment does not use Intelligence" is the truthful answer, not
+ * a fabricated entitlement.
+ */
+const runtimeEntitlements = selfHostBannerIntelligence
+  ? () => selfHostBannerIntelligence.getRuntimeEntitlements()
+  : async () =>
+      ({
+        status: "unavailable" as const,
+        error: {
+          code: "local_mode",
+          message: "This deployment runs without CopilotKit Intelligence.",
+          retryable: false,
+        },
+      }) as const;
 
 // Said once, at boot, whether Intelligence will let this deployment use what it is licensed for. A
 // self-hosted Intelligence without a licence refuses memory quietly; this is the line that says why.
-void reportIntelligenceEntitlement({
-  entitlements: () => selfHostBannerIntelligence.getRuntimeEntitlements(),
-});
+if (selfHostBannerIntelligence) {
+  void reportIntelligenceEntitlement({
+    entitlements: runtimeEntitlements,
+  });
+}
 
 const identityGithubCallback =
   config.githubApp && config.publicUrl
@@ -2679,12 +2770,14 @@ const app = createApp(
     }),
     channels: channelStore,
   },
-  {
-    store: learningSettings,
-    autoAssign: learningAutoAssign,
-    status: copilotRuntime.learning?.status,
-    inspect: copilotRuntime.learning?.inspect,
-  },
+  config.runtime.mode === "intelligence" && learningAutoAssign
+    ? {
+        store: learningSettings,
+        autoAssign: learningAutoAssign,
+        status: copilotRuntime.learning?.status,
+        inspect: copilotRuntime.learning?.inspect,
+      }
+    : undefined,
   {
     approvals: approvalService,
     shared: { modes: accountModes, use: sharedUseStore },
@@ -2738,7 +2831,7 @@ const app = createApp(
         },
         credentials: credentialStore,
         modelCheckAtBoot,
-        entitlements: () => selfHostBannerIntelligence.getRuntimeEntitlements(),
+        entitlements: runtimeEntitlements,
         plugins: pluginStore,
         primaryBot: primaryBotIdOf(
           tenantPackage.agents.map((agent) => agent.id),
@@ -2784,7 +2877,7 @@ const app = createApp(
   },
   createSelfHostBanner({
     enabled: config.selfHostBanner,
-    entitlements: () => selfHostBannerIntelligence.getRuntimeEntitlements(),
+    entitlements: runtimeEntitlements,
   }),
 
   identityStore,

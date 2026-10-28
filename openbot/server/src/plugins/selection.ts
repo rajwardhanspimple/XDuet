@@ -228,6 +228,15 @@ export async function selectTools<Tool extends SelectableTool>(input: {
     prompt: string,
     signal?: AbortSignal,
   ) => Promise<string | null> | (string | null) | Promise<never>;
+  /**
+   * A typed decision over the same skills. When present it replaces `choose`, so the deployment
+   * can answer pass one with a small decision model without a prose prompt in between.
+   */
+  decide?: (input: {
+    text: string;
+    skills: readonly SelectableSkill[];
+    signal?: AbortSignal;
+  }) => Promise<string[] | null>;
   signal?: AbortSignal;
   /** Overridable so a deployment that measured its own knee is not stuck with ours. */
   floor?: number;
@@ -253,13 +262,21 @@ export async function selectTools<Tool extends SelectableTool>(input: {
 
   let chosen: string[] | null = null;
   try {
-    const answer = await input.choose(
-      selectionPrompt(text, skills),
-      input.signal,
-    );
-    input.signal?.throwIfAborted();
-    chosen =
-      typeof answer === "string" ? readChosenSkills(answer, skills) : null;
+    if (input.decide) {
+      chosen = await input.decide({
+        text,
+        skills,
+        ...(input.signal ? { signal: input.signal } : {}),
+      });
+    } else {
+      const answer = await input.choose(
+        selectionPrompt(text, skills),
+        input.signal,
+      );
+      input.signal?.throwIfAborted();
+      chosen =
+        typeof answer === "string" ? readChosenSkills(answer, skills) : null;
+    }
   } catch {
     // A user stopping the run is not an unavailable selector. Never start a fallback model run.
     input.signal?.throwIfAborted();

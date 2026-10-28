@@ -114,6 +114,8 @@ export type SetupChecklist = {
 /** What Intelligence said about this deployment. See {@link intelligenceFact}. */
 export type IntelligenceFact =
   | { state: "ready" }
+  /** Local mode: conversations and memory live in this install, not in Intelligence. */
+  | { state: "not_required" }
   /** It answered, and did not confirm the entitlement. `advice` is the admin's next step. */
   | { state: "refused"; advice: string }
   /** It did not answer in time, or the read failed. */
@@ -366,6 +368,13 @@ function intelligenceRow(fact: IntelligenceFact, product: string) {
     return {
       status: "ready" as const,
       readyDetail,
+      gapDetail: "",
+      fix: null,
+    };
+  if (fact.state === "not_required")
+    return {
+      status: "ready" as const,
+      readyDetail: `Keeps conversations and memory in this local install.`,
       gapDetail: "",
       fix: null,
     };
@@ -683,9 +692,11 @@ export function createSetupSources(input: {
     environment: input.environment,
   };
   const askIntelligence = () =>
-    withinTime(input.entitlements(), INTELLIGENCE_TIMEOUT_MS).then(
-      intelligenceFact,
-    );
+    input.config.localMode
+      ? Promise.resolve({ state: "not_required" } as IntelligenceFact)
+      : withinTime(input.entitlements(), INTELLIGENCE_TIMEOUT_MS).then(
+          intelligenceFact,
+        );
 
   const askComputer = async (): Promise<ComputerVerdict> => {
     if (!input.computer) return "needs_setup";

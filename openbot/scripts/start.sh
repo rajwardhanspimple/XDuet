@@ -183,8 +183,10 @@ identifies_as_openbot() {
   case "$name" in
     # A field of this server's own payload. A stray 200 does not carry it.
     server)
+      # `agents` is present in both Intelligence and local SSE mode; `licenseStatus` is only in the
+      # former, so requiring it made a working local server look like a stranger on the port.
       curl -fsS --max-time 3 "http://localhost:$port/api/copilotkit/info" 2>/dev/null \
-        | grep -q '"licenseStatus"'
+        | grep -q '"agents"'
       ;;
     # The app is static HTML with nothing to interrogate, so a marker in its head is the identity
     # available. Not the title: a fork that renames the product changes the title with it.
@@ -499,7 +501,7 @@ bun run - "$INFO" <<'JS'
 const info = JSON.parse(process.argv[2]);
 const status = info.licenseStatus;
 const agents = Object.keys(info.agents ?? {});
-if (status !== "valid") {
+if (status !== undefined && status !== "valid") {
   console.log(`\x1b[31m  licence is '${status}', not 'valid'.\x1b[0m`);
   console.log("\x1b[31m  Check INTELLIGENCE_API_KEY. From the repository root: npx copilotkit@latest login && npx copilotkit@latest project select && bun openbot/scripts/setup-learning.ts\x1b[0m");
   console.log("\x1b[31m  The Quick start in the repository's README.md has the steps.\x1b[0m");
@@ -509,7 +511,11 @@ if (agents.length === 0) {
   console.log("\x1b[31m  No Bots registered.\x1b[0m");
   process.exit(1);
 }
-console.log(`\x1b[32m  licence valid · mode ${info.mode} · Bots: ${agents.join(", ")}\x1b[0m`);
+if (status === undefined) {
+  console.log(`\x1b[32m  local mode · Bots: ${agents.join(", ")}\x1b[0m`);
+} else {
+  console.log(`\x1b[32m  licence valid · mode ${info.mode} · Bots: ${agents.join(", ")}\x1b[0m`);
+}
 JS
 
 info "4/4  App"

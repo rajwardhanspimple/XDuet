@@ -60,6 +60,11 @@ describe("deployment configuration", () => {
     expect(config.singleUser).toBe(false);
     expect(config.auth).toBeUndefined();
     expect(config.organizationAuthUrl).toBe("https://openbot.company.example");
+    if (config.runtime.mode !== "intelligence") {
+      throw new Error(
+        "organization authority requires the Intelligence runtime",
+      );
+    }
     expect(config.runtime.intelligence.apiKey).toBe("tenant-api-key");
   });
   test("resolves the Intelligence runtime, which is the only runtime", () => {

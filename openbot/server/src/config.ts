@@ -24,14 +24,29 @@ import {
   transcriptionConfig,
 } from "./dictation/config";
 import type { BrokerProvider } from "./plugins/access";
+import {
+  type DecisionConfig,
+  decisionConfigFromEnvironment,
+} from "./decision/config";
 import { type VoiceConfig, voiceConfig } from "./voice/config";
 import { type WebBotAuth, webBotAuthFromEnv } from "./web-bot-auth";
 
-export type RuntimeCapabilities = {
-  mode: "intelligence";
-  durableHistory: true;
-  intelligence: IntelligenceSettings;
-};
+export type RuntimeCapabilities =
+  | {
+      mode: "intelligence";
+      durableHistory: true;
+      intelligence: IntelligenceSettings;
+    }
+  | {
+      /**
+       * No CopilotKit Intelligence. The runtime still runs, but its threads live in this process
+       * until the Postgres runner lands; this is the local-development contract, not the final
+       * durable one.
+       */
+      mode: "local";
+      durableHistory: false;
+      intelligence?: undefined;
+    };
 
 /**
  * The Intelligence contract. Three values are required; see runtimeCapabilities.
@@ -312,7 +327,11 @@ export type DeploymentConfig = {
    */
   appUrl: string | undefined;
   tenantPackageDirectory: string;
+  /** True when this deployment runs without CopilotKit Intelligence. */
+  localMode: boolean;
   runtime: RuntimeCapabilities;
+  /** The typed-decision model, when one was configured. Absent leaves those features off. */
+  decision?: DecisionConfig;
   /**
    * How long a Bot's stream may say nothing before this deployment ends the turn, in milliseconds.
    *
@@ -988,7 +1007,15 @@ function oktaAuth(
  * for a token the platform had stopped handing out. It is still read and still forwarded when a
  * deployment sets one, which is what a self-hosted Intelligence with its own licence needs.
  */
+function localModeEnabled(environment: Environment): boolean {
+  const value = optional(environment, "OPENBOT_LOCAL_MODE")?.toLowerCase();
+  return value === "true" || value === "1" || value === "yes" || value === "on";
+}
+
 function runtimeCapabilities(environment: Environment): RuntimeCapabilities {
+  if (localModeEnabled(environment)) {
+    return { mode: "local", durableHistory: false };
+  }
   const settings = {
     apiUrl: url(environment, "INTELLIGENCE_API_URL"),
     gatewayWsUrl: url(environment, "INTELLIGENCE_GATEWAY_WS_URL"),
@@ -1409,7 +1436,9 @@ export function loadConfig(
     )?.replace(/\/+$/, ""),
     tenantPackageDirectory:
       optional(environment, "TENANT_PACKAGE_DIR") ?? "../examples/openduet",
+    localMode: localModeEnabled(environment),
     runtime: runtimeCapabilities(environment),
+    decision: decisionConfigFromEnvironment(environment),
     learning: learningDefault(environment),
     learningAutoAssign: learningAutoAssignEnabled(environment),
     ...learningSetupCredential(environment),
@@ -1432,7 +1461,10 @@ export function loadConfig(
       singleUserAllowed(environment, configuredAuthProviders(auth).length > 0),
     accessibility: accessibilityEnabled(environment),
     generativeUi: generativeUiEnabled(environment),
-    selfHostBanner: selfHostBannerEnabled(environment),
+    // A local install is not a self-hosted deployment asking for help; the banner has nothing to
+    // offer the person running it on their own machine.
+    selfHostBanner:
+      !localModeEnabled(environment) && selfHostBannerEnabled(environment),
     ...(optional(environment, "APP_DIST_DIR")
       ? { appDistDir: optional(environment, "APP_DIST_DIR") as string }
       : {}),
