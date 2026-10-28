@@ -169,7 +169,7 @@ export class DeciderInferenceEngine {
         headerLabels.includes("category_promotions") ||
         headerLabels.includes("spam") ||
         /\b(50% off|flash sale|super-early-bird|early-bird|product hunt|livestream|perk :|weekly digest|weekly ai innovations|newsletter|web drop|primogems|scary story|free tier access expires soon|tokens login to claim|138 million tokens|unlimited ai video|sold out in sf|explore the forge agenda)\b/i.test(cleanLower) ||
-        /your cart is about to expire|no action needed|no action is needed|no action is required|for your records only|fyi only|accepted the invitation|has accepted this invitation|invoice payment confirmation|your invoice is available|receipt for your/i.test(cleanLower) ||
+        /your cart is about to expire|no action needed|no action is needed|no action is required|for your records only|fyi only|accepted the invitation|has accepted this invitation|invoice payment confirmation|your invoice is available|receipt for your|rsvp not required|no rsvp needed|rsvp is optional|optional attendance|purely optional/i.test(cleanLower) ||
         /confirm your subscription/i.test(cleanLower);
 
       if (isMarketingPromo) {
@@ -249,7 +249,7 @@ export class DeciderInferenceEngine {
       if (skillSlug === "github" && /\b(commit our (git )?changes|git commit|review pull requests?|git diff)\b/i.test(cleanLower)) {
         return { type: "noul", noul: 0.99 };
       }
-      if (skillSlug === "memory" && /\b(update (our )?(local )?memory|save to memory|store in memory|remember that|remember my|memory cache)\b/i.test(cleanLower)) {
+      if (skillSlug === "memory" && /\b(update (our )?(local )?memory|save to memory|store in memory|remember that|remember my|memory cache|memory notes|in our memory|search memory|check memory|lookup.*memory|look up.*memory)\b/i.test(cleanLower)) {
         return { type: "noul", noul: 0.99 };
       }
       if (skillSlug === "shell") {
@@ -374,6 +374,10 @@ export class DeciderInferenceEngine {
         stateLower.includes("fdisk -l") ||
         stateLower.includes("fdisk --list") ||
         stateLower.includes("journalctl") ||
+        stateLower.includes("systemctl status") ||
+        stateLower.includes("uptime") ||
+        stateLower.includes("whoami") ||
+        stateLower.includes("du -sh") ||
         stateLower.includes("tail -n") ||
         stateLower.includes("freebusy") ||
         stateLower.includes("ping ") ||
@@ -502,11 +506,11 @@ export class DeciderInferenceEngine {
       if (/\b(release notes|blog post|customer documentation|user documentation|investor update)\b/i.test(stateLower)) {
         rawScores["writer"] = (rawScores["writer"] ?? 0) + 8.0;
       }
-      if (/\b(literature|architectural.*comparison|trade-offs.*benchmarks)\b/i.test(stateLower)) {
-        rawScores["researcher"] = (rawScores["researcher"] ?? 0) + 8.0;
+      if (/\b(user research|qualitative findings|customer interviews|conduct.*interviews|churned customers|literature|architectural.*comparison|trade-offs.*benchmarks)\b/i.test(stateLower) && !/\b(typeerror|flexbox|sql migration)\b/i.test(stateLower)) {
+        rawScores["researcher"] = (rawScores["researcher"] ?? 0) + 18.0;
       }
-      if (/\b(flexbox|typeerror|uncaught|sql migration|docker compose up|unit tests?)\b/i.test(stateLower)) {
-        rawScores["coder"] = (rawScores["coder"] ?? 0) + 8.0;
+      if (/\b(native heap|memory leak|c\+\+|addon|flexbox|typeerror|uncaught|sql migration|docker compose up|unit tests?)\b/i.test(stateLower)) {
+        rawScores["coder"] = (rawScores["coder"] ?? 0) + 18.0;
       }
     } else {
       for (const key of criteriaKeys) {

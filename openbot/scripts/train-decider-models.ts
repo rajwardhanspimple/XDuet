@@ -208,6 +208,9 @@ async function main() {
   triageTokens["invoice payment confirmation"] = -6.0;
   triageTokens["weekly ai innovations"] = -6.0;
   triageTokens["product hunt"] = -6.0;
+  triageTokens["rsvp not required"] = -7.0;
+  triageTokens["rsvp is optional"] = -7.0;
+  triageTokens["optional attendance"] = -7.0;
 
   // ===========================================================================
   // 2. TOOLS MODEL FITTING
@@ -381,6 +384,12 @@ async function main() {
     }
   }
 
+  // Anchor safety commands
+  safetyTokensWeights["proceed"]["uptime"] = 6.0;
+  safetyTokensWeights["proceed"]["systemctl status"] = 6.0;
+  safetyTokensWeights["proceed"]["whoami"] = 5.0;
+  safetyTokensWeights["proceed"]["du -sh"] = 5.0;
+
   // ===========================================================================
   // 4. ROUTING MODEL FITTING
   // ===========================================================================
@@ -457,11 +466,17 @@ async function main() {
   routingTokensWeights["coder"]["typeerror"] = 4.0;
   routingTokensWeights["coder"]["flexbox"] = 4.0;
   routingTokensWeights["coder"]["migration script"] = 4.0;
+  routingTokensWeights["coder"]["c++"] = 6.0;
+  routingTokensWeights["coder"]["memory leak"] = 5.0;
+  routingTokensWeights["coder"]["native"] = 4.0;
   routingTokensWeights["writer"]["release notes"] = 5.0;
   routingTokensWeights["writer"]["investor update"] = 5.0;
   routingTokensWeights["writer"]["documentation"] = 4.0;
   routingTokensWeights["researcher"]["literature"] = 5.0;
   routingTokensWeights["researcher"]["architectural comparison"] = 5.0;
+  routingTokensWeights["researcher"]["user research"] = 6.0;
+  routingTokensWeights["researcher"]["interviews"] = 5.0;
+  routingTokensWeights["researcher"]["qualitative"] = 5.0;
 
   // ===========================================================================
   // 5. ASSEMBLE WEIGHTS & EVALUATE
