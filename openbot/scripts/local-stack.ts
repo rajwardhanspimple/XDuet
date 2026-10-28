@@ -252,7 +252,15 @@ async function up(): Promise<void> {
           "computer",
           [process.execPath, "--env-file=../.env", "src/index.ts"],
           join(root, "agent-computer"),
-          environment,
+          {
+            ...environment,
+            /*
+             * The computer reads `PORT`, and the shared `.env` reserves that name for the API
+             * server. Without this override it binds the server's port and the launcher waits for
+             * a health check on a port nothing is listening to.
+             */
+            PORT: String(computerPort),
+          },
         ),
       );
       await waitFor("agent computer", `${computerUrl}/health`);

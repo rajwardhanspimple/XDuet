@@ -119,10 +119,17 @@ export function decisionConfigFromEnvironment(
   }
 
   if (provider === "mercury-decide") {
-    const apiKey = text(environment, "DECISION_API_KEY");
+    /*
+     * Inception's own examples pass the same bearer token as `INCEPTION_API_KEY`. Keep
+     * DECISION_API_KEY as the explicit deployment name, but accept the provider-native variable so
+     * a local `.env` copied from the API documentation works without a second alias.
+     */
+    const apiKey =
+      text(environment, "DECISION_API_KEY") ??
+      text(environment, "INCEPTION_API_KEY");
     if (!apiKey) {
       throw new Error(
-        "DECISION_PROVIDER=mercury-decide needs DECISION_API_KEY, which is separate from OPENAI_API_KEY.",
+        "DECISION_PROVIDER=mercury-decide needs DECISION_API_KEY or INCEPTION_API_KEY, which is separate from OPENAI_API_KEY.",
       );
     }
     return {

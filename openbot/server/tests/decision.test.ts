@@ -88,6 +88,19 @@ describe("decision configuration", () => {
     ).toThrow("DECISION_API_KEY");
   });
 
+  test("mercury-decide accepts Inception's native key name", () => {
+    const config = decisionConfigFromEnvironment({
+      DECISION_PROVIDER: "mercury-decide",
+      INCEPTION_API_KEY: "inception-test",
+    });
+    expect(config).toMatchObject({
+      provider: "mercury-decide",
+      model: "mercury-decide",
+      apiKey: "inception-test",
+      baseUrl: "https://api.inceptionlabs.ai/v1",
+    });
+  });
+
   test("a local provider defaults to a local endpoint", () => {
     const config = decisionConfigFromEnvironment({
       DECISION_PROVIDER: "opendecider",
@@ -265,6 +278,92 @@ describe("decision client construction", () => {
     const client = createDecisionClient(config);
     expect(client.provider).toBe("laya");
     expect(client.model).toBe("laya");
+  });
+
+  test("mercury-decide reads the hosted /decisions answer envelope", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        expect(new URL(request.url).pathname).toBe("/decisions");
+        expect(await request.json()).toMatchObject({
+          model: "mercury-decide",
+          state: { message: "Please refund the duplicate charge." },
+        });
+        return Response.json({
+          model: "mercury-decide",
+          answers: {
+            billing: { type: "noul", noul: 0.9933 },
+            team: {
+              type: "choice",
+              choice: "billing",
+              probabilities: { billing: 0.9997, support: 0.0003 },
+              confidence: 0.9995,
+            },
+            urgency: {
+              type: "score",
+              score: 0.872,
+              legend: {
+                "0": "Can wait",
+                "1": "Needs attention soon",
+                "2": "Needs immediate attention",
+              },
+              probabilities: {
+                "0": 0.1593,
+                "1": 0.8092,
+                "2": 0.0313,
+              },
+              confidence: 0.7139,
+            },
+          },
+        });
+      },
+    });
+    try {
+      const config = decisionConfigFromEnvironment({
+        DECISION_PROVIDER: "mercury-decide",
+        DECISION_API_KEY: "test-key",
+        DECISION_BASE_URL: `http://127.0.0.1:${server.port}`,
+      });
+      if (!config) throw new Error("expected a configuration");
+      const answers = await createDecisionClient(config).decide(
+        { message: "Please refund the duplicate charge." },
+        {
+          billing: {
+            type: "noul",
+            instructions: "Is this request about billing?",
+          },
+          team: {
+            type: "choice",
+            criteria: {
+              billing: "Payments, charges, and refunds",
+              support: "Technical support and other requests",
+            },
+          },
+          urgency: {
+            type: "score",
+            instructions: "How urgent is this request?",
+            criteria: [
+              "Can wait",
+              "Needs attention soon",
+              "Needs immediate attention",
+            ],
+          },
+        },
+      );
+      expect(answers.billing).toEqual({ type: "noul", noul: 0.9933 });
+      expect(answers.team).toMatchObject({
+        type: "choice",
+        choice: "billing",
+        confidence: 0.9995,
+      });
+      expect(answers.urgency).toMatchObject({
+        type: "score",
+        level: 1,
+        score: 0.872,
+      });
+    } finally {
+      server.stop(true);
+    }
   });
 });
 

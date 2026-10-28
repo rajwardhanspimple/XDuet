@@ -12,7 +12,7 @@
 - A routine fired through the worker and appended its turn to the same durable thread. Handoff uses `copilotRuntime.runner`, `copilotRuntime.history`, and the durable `threadLock`; group chat uses the same `routineIntelligence` + `routineAgentRunner` pair.
 - `bun run local:up`, `bun run local:status`, and `bun run local:down` start and stop the agent computer, server, worker, and app without Docker. Postgres is the only external local prerequisite.
 - Mercury 3 is forced through OpenAI-compatible Chat Completions (not `/v1/responses`) for chat, streaming, JSON mode, and tool calls.
-- A typed decision client supports `mercury-3` (today's compatibility path), `mercury-decide`, `opendecider`, and `laya`.
+- A typed decision client supports `mercury-decide` (the active path), `mercury-3` as a compatibility path, and local `opendecider` or `laya`.
 - Decision-backed tool selection fails open; decision-backed safety review fails closed and can only add approval or hand-off. Decision-backed routing is authoritative over the roster and falls back to the default coworker; decision-backed triage is a typed `noul` and fails closed to "unsorted" rather than guessing "can wait".
 - Chat titles in local mode are taken from the person's first line instead of a second model call.
 - Decision, routing, triage, configuration, setup, selection, approval, title, durable-runner, routine, handoff, and group-chat tests pass; server and test typechecks pass.
@@ -216,17 +216,17 @@ export type DecisionClient = {
 Adapters:
 
 - **OpenDecider Nano / Laya** — `POST {DECISION_BASE_URL}/v1/systemone`, bearer token optional. Same Jev-compatible request shape.
-- **Mercury Decide** — `POST https://api.inceptionlabs.ai/v1/decisions`, `model: "mercury-decide"`, separate `DECISION_API_KEY`.
-- **Mercury 3 compatibility** — typed questions over `/v1/chat/completions`; uses `OPENAI_API_KEY` when `DECISION_API_KEY` is unset. This is the path running today because no separate decision endpoint was supplied.
+- **Mercury Decide** — `POST https://api.inceptionlabs.ai/v1/decisions`, `model: "mercury-decide"`, bearer token from `DECISION_API_KEY` or Inception's native `INCEPTION_API_KEY`.
+- **Mercury 3 compatibility** — typed questions over `/v1/chat/completions`; uses `OPENAI_API_KEY` when `DECISION_API_KEY` is unset. This remains available when a deployment has no decision endpoint.
 
 Configuration:
 
 ```env
-DECISION_PROVIDER=opendecider   # or laya, mercury-decide, mercury-3
-DECISION_BASE_URL=http://localhost:8000
-DECISION_MODEL=opendecider-nano
-DECISION_API_KEY=               # Mercury Decide only
-DECISION_TIMEOUT_MS=2000
+DECISION_PROVIDER=mercury-decide
+DECISION_BASE_URL=https://api.inceptionlabs.ai/v1
+DECISION_MODEL=mercury-decide
+DECISION_API_KEY=               # or INCEPTION_API_KEY
+DECISION_TIMEOUT_MS=8000
 DECISION_TOOL_THRESHOLD=0.35
 DECISION_SAFETY_THRESHOLD=0.5
 DECISION_ROUTING_THRESHOLD=0.6
@@ -739,11 +739,11 @@ BOT_MODEL=mercury-3
 AGENT_BOT_MODEL=mercury-3
 
 # Decision model
-DECISION_PROVIDER=opendecider        # opendecider | laya | mercury-decide | mercury-3
-DECISION_BASE_URL=http://localhost:8000
-DECISION_MODEL=opendecider-nano
-DECISION_API_KEY=                    # Mercury Decide only, separate key
-DECISION_TIMEOUT_MS=2000
+DECISION_PROVIDER=mercury-decide     # mercury-decide | mercury-3 | opendecider | laya
+DECISION_BASE_URL=https://api.inceptionlabs.ai/v1
+DECISION_MODEL=mercury-decide
+DECISION_API_KEY=                    # or INCEPTION_API_KEY
+DECISION_TIMEOUT_MS=8000
 DECISION_TOOL_THRESHOLD=0.35
 DECISION_SAFETY_THRESHOLD=0.5
 DECISION_ROUTING_THRESHOLD=0.6
