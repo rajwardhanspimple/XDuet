@@ -33,6 +33,8 @@
     "local:up": "bun scripts/local-stack.ts up",
     "local:down": "bun scripts/local-stack.ts down",
     "local:status": "bun scripts/local-stack.ts status",
+    "decider:start": "bun scripts/decider-server.ts",
+    "train:deciders": "bun scripts/train-decider-models.ts",
     "export:decision-dataset": "bun scripts/export-decision-dataset.ts",
     "composio:smoke": "bun scripts/composio-smoke.ts",
     "mock:knowledge": "bun scripts/mock-knowledge-mcp.ts"
