@@ -141,3 +141,4 @@ describe("Cold crash recovery across server restarts", () => {
     await database.delete(workItems).where(eq(workItems.key, itemKey));
   });
 });
+

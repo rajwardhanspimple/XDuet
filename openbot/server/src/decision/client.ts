@@ -1,4 +1,5 @@
 import type { DecisionConfig } from "./config";
+import { logDecisionDataset } from "./dataset";
 import type {
   ChoiceAnswer,
   DecisionAnswer,
@@ -77,7 +78,18 @@ class Mercury3DecisionClient implements DecisionClient {
     if (typeof text !== "string") {
       throw new Error("Mercury 3 returned no decision text.");
     }
-    return parseAnswers(text, questions);
+    const answers = parseAnswers(text, questions);
+    if (this.config.datasetLogPath) {
+      void logDecisionDataset(this.config.datasetLogPath, {
+        timestamp: new Date().toISOString(),
+        provider: this.provider,
+        model: this.model,
+        state,
+        questions,
+        answers,
+      });
+    }
+    return answers;
   }
 }
 
@@ -101,7 +113,18 @@ class MercuryDecideClient implements DecisionClient {
       this.config.timeoutMs,
       signal,
     );
-    return answersFromResponse(result, questions);
+    const answers = answersFromResponse(result, questions);
+    if (this.config.datasetLogPath) {
+      void logDecisionDataset(this.config.datasetLogPath, {
+        timestamp: new Date().toISOString(),
+        provider: this.provider,
+        model: this.model,
+        state,
+        questions,
+        answers,
+      });
+    }
+    return answers;
   }
 }
 
@@ -120,19 +143,76 @@ class LocalDecisionClient implements DecisionClient {
     signal?: AbortSignal,
   ): Promise<DecisionAnswers> {
     const base = this.config.baseUrl.replace(/\/+$/, "");
-    const url = /\/v1$/.test(base)
-      ? `${base}/systemone`
-      : `${base}/v1/systemone`;
-    const result = await postJson(
-      url,
-      { state, questions },
-      this.config.apiKey
-        ? { Authorization: `Bearer ${this.config.apiKey}` }
-        : {},
-      this.config.timeoutMs,
-      signal,
-    );
-    return answersFromResponse(result, questions);
+    const headers: Record<string, string> = this.config.apiKey
+      ? { Authorization: `Bearer ${this.config.apiKey}` }
+      : {};
+    const body = { model: this.model, state, questions };
+
+    const candidates = this.resolveCandidateUrls(base);
+    let lastError: unknown;
+
+    for (const url of candidates) {
+      try {
+        const result = await postJson(
+          url,
+          body,
+          headers,
+          this.config.timeoutMs,
+          signal,
+        );
+        const answers = answersFromResponse(result, questions);
+        if (this.config.datasetLogPath) {
+          void logDecisionDataset(this.config.datasetLogPath, {
+            timestamp: new Date().toISOString(),
+            provider: this.provider,
+            model: this.model,
+            state,
+            questions,
+            answers,
+          });
+        }
+        return answers;
+      } catch (error) {
+        lastError = error;
+        // If 404 or connection failure on multi-candidate search, try fallback candidate
+        if (
+          error instanceof Error &&
+          error.message.includes("404") &&
+          url !== candidates[candidates.length - 1]
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError ?? new Error("Failed to reach decision endpoint");
+  }
+
+  private resolveCandidateUrls(base: string): string[] {
+    const hasExplicitPath =
+      /\/(decisions|systemone|decide|chat\/completions)$/i.test(base);
+    if (hasExplicitPath) return [base];
+
+    const hasV1 = /\/v1$/i.test(base);
+    if (this.provider === "opendecider") {
+      return hasV1
+        ? [`${base}/decisions`, `${base}/systemone`]
+        : [
+            `${base}/v1/decisions`,
+            `${base}/decisions`,
+            `${base}/v1/systemone`,
+            `${base}/systemone`,
+          ];
+    }
+    // Laya / SystemOne default
+    return hasV1
+      ? [`${base}/systemone`, `${base}/decisions`]
+      : [
+          `${base}/v1/systemone`,
+          `${base}/systemone`,
+          `${base}/v1/decisions`,
+          `${base}/decisions`,
+        ];
   }
 }
 
@@ -197,6 +277,17 @@ function answersFromResponse(
     result && typeof result === "object"
       ? (result as Record<string, unknown>)
       : undefined;
+
+  // Handle OpenAI-compatible chat completion responses from fine-tuned deciders
+  const choices = body?.choices;
+  if (Array.isArray(choices) && choices.length > 0) {
+    const content = (choices[0] as { message?: { content?: unknown } })?.message
+      ?.content;
+    if (typeof content === "string") {
+      return parseAnswers(content, questions);
+    }
+  }
+
   const raw = body?.answers ?? body?.results ?? body;
   if (!raw || typeof raw !== "object") {
     throw new Error("Decision response did not contain answers.");

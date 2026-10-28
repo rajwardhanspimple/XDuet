@@ -2826,12 +2826,12 @@ const app = createApp(
     }),
     channels: channelStore,
   },
-  config.runtime.mode === "intelligence" && learningAutoAssign
+  copilotRuntime.learning
     ? {
         store: learningSettings,
         autoAssign: learningAutoAssign,
-        status: copilotRuntime.learning?.status,
-        inspect: copilotRuntime.learning?.inspect,
+        status: copilotRuntime.learning.status,
+        inspect: copilotRuntime.learning.inspect,
       }
     : undefined,
   {

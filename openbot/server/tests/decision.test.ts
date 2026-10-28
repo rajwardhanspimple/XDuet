@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createDecisionClient } from "../src/decision/client";
 import { decisionConfigFromEnvironment } from "../src/decision/config";
 import { createDecisionRouter } from "../src/decision/routing";
@@ -555,5 +558,87 @@ describe("decision-backed triage", () => {
         },
       }),
     ).resolves.toMatchObject({ decidedBy: "rule:bulk", verdict: "can_wait" });
+  });
+
+  test("opendecider client sends model and queries decisions endpoint", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        expect(new URL(request.url).pathname).toBe("/v1/decisions");
+        const body = await request.json();
+        expect(body).toMatchObject({
+          model: "opendecider-custom",
+          state: { query: "search tools" },
+        });
+        return Response.json({
+          answers: {
+            relevant: { type: "noul", noul: 0.95 },
+          },
+        });
+      },
+    });
+
+    try {
+      const config = decisionConfigFromEnvironment({
+        DECISION_PROVIDER: "opendecider",
+        DECISION_BASE_URL: `http://127.0.0.1:${server.port}`,
+        DECISION_MODEL: "opendecider-custom",
+      });
+      if (!config) throw new Error("expected config");
+      const client = createDecisionClient(config);
+      const answers = await client.decide(
+        { query: "search tools" },
+        { relevant: { type: "noul", instructions: "is relevant" } },
+      );
+      expect(answers.relevant).toMatchObject({ type: "noul", noul: 0.95 });
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("laya client queries systemone endpoint and logs dataset entries for training", async () => {
+    const testLogFile = join(tmpdir(), `decision-dataset-${Date.now()}.jsonl`);
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        expect(new URL(request.url).pathname).toBe("/v1/systemone");
+        const body = await request.json();
+        expect(body).toMatchObject({
+          model: "laya-custom",
+          state: { action: "save_file" },
+        });
+        return Response.json({
+          results: {
+            safe: { type: "noul", noul: 0.98 },
+          },
+        });
+      },
+    });
+
+    try {
+      const config = decisionConfigFromEnvironment({
+        DECISION_PROVIDER: "laya",
+        DECISION_BASE_URL: `http://127.0.0.1:${server.port}`,
+        DECISION_MODEL: "laya-custom",
+        DECISION_DATASET_LOG_PATH: testLogFile,
+      });
+      if (!config) throw new Error("expected config");
+      const client = createDecisionClient(config);
+      const answers = await client.decide(
+        { action: "save_file" },
+        { safe: { type: "noul", instructions: "is safe" } },
+      );
+      expect(answers.safe).toMatchObject({ type: "noul", noul: 0.98 });
+
+      // Wait a tick for dataset file to append
+      await new Promise((r) => setTimeout(r, 50));
+      const fileData = await readFile(testLogFile, "utf8");
+      expect(fileData).toContain('"provider":"laya"');
+      expect(fileData).toContain('"model":"laya-custom"');
+      expect(fileData).toContain('"safe"');
+    } finally {
+      server.stop();
+      await unlink(testLogFile).catch(() => {});
+    }
   });
 });

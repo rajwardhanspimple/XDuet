@@ -39,12 +39,10 @@ export type RuntimeCapabilities =
     }
   | {
       /**
-       * No CopilotKit Intelligence. The runtime still runs, but its threads live in this process
-       * until the Postgres runner lands; this is the local-development contract, not the final
-       * durable one.
+       * No CopilotKit Intelligence. Local mode backed by PostgresAgentRunner for durable threads.
        */
       mode: "local";
-      durableHistory: false;
+      durableHistory: boolean;
       intelligence?: undefined;
     };
 
@@ -1015,7 +1013,7 @@ function localModeEnabled(environment: Environment): boolean {
 
 function runtimeCapabilities(environment: Environment): RuntimeCapabilities {
   if (localModeEnabled(environment)) {
-    return { mode: "local", durableHistory: false };
+    return { mode: "local", durableHistory: true };
   }
   const settings = {
     apiUrl: url(environment, "INTELLIGENCE_API_URL"),

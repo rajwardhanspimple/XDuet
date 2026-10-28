@@ -26,6 +26,7 @@ export type DecisionConfig = {
   safetyThreshold: number;
   routingThreshold: number;
   triageThreshold: number;
+  datasetLogPath?: string;
 };
 
 const PROVIDERS = new Set<DecisionProvider>([
@@ -79,6 +80,7 @@ export function decisionConfigFromEnvironment(
     );
   }
   const provider = rawProvider as DecisionProvider;
+  const datasetLogPath = text(environment, "DECISION_DATASET_LOG_PATH");
 
   if (provider === "mercury-3") {
     const apiKey =
@@ -115,6 +117,7 @@ export function decisionConfigFromEnvironment(
         "DECISION_TRIAGE_THRESHOLD",
         0.7,
       ),
+      ...(datasetLogPath ? { datasetLogPath } : {}),
     };
   }
 
@@ -157,19 +160,26 @@ export function decisionConfigFromEnvironment(
         "DECISION_TRIAGE_THRESHOLD",
         0.7,
       ),
+      ...(datasetLogPath ? { datasetLogPath } : {}),
     };
   }
+
+  const defaultModel =
+    provider === "opendecider" ? "opendecider-nano" : "laya";
+  const apiKey =
+    text(environment, "DECISION_API_KEY") ??
+    text(environment, "OPENDECIDER_API_KEY") ??
+    text(environment, "LAYA_API_KEY") ??
+    "";
 
   return {
     provider,
     baseUrl: normalizeBaseUrl(
       text(environment, "DECISION_BASE_URL") ?? "http://localhost:8000",
     ),
-    model:
-      text(environment, "DECISION_MODEL") ??
-      (provider === "opendecider" ? "opendecider-nano" : "laya"),
-    apiKey: text(environment, "DECISION_API_KEY") ?? "",
-    timeoutMs: numberFrom(environment, "DECISION_TIMEOUT_MS", 2_000),
+    model: text(environment, "DECISION_MODEL") ?? defaultModel,
+    apiKey,
+    timeoutMs: numberFrom(environment, "DECISION_TIMEOUT_MS", 5_000),
     toolThreshold: numberFrom(environment, "DECISION_TOOL_THRESHOLD", 0.35),
     safetyThreshold: numberFrom(environment, "DECISION_SAFETY_THRESHOLD", 0.5),
     routingThreshold: numberFrom(
@@ -178,6 +188,7 @@ export function decisionConfigFromEnvironment(
       0.6,
     ),
     triageThreshold: numberFrom(environment, "DECISION_TRIAGE_THRESHOLD", 0.7),
+    ...(datasetLogPath ? { datasetLogPath } : {}),
   };
 }
 
