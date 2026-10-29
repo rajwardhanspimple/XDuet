@@ -6,9 +6,9 @@ import {
   type AgentRunnerIsRunningRequest,
   type AgentRunnerRunRequest,
   type AgentRunnerStopRequest,
-  finalizeRunEvents,
   type LocalThreadEndpointRecord,
-} from "@copilotkit/runtime/v2";
+} from "./runner-base";
+import { finalizeRunEvents } from "./event-finalizer";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { type Observable, ReplaySubject } from "rxjs";
 import type { Database } from "../db/client";

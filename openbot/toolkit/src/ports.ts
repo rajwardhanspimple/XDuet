@@ -48,6 +48,21 @@ export type ComponentCatalog = {
  * That is the right answer and the hop simply waits its turn: it is released back to the queue and
  * tried again, which is a wait rather than a failure.
  */
+export interface LockableThreadRunner {
+  acquireLock(
+    threadId: string,
+    runId: string,
+    timeoutMs: number,
+  ): Promise<boolean>;
+  renewLock(
+    threadId: string,
+    runId: string,
+    extensionMs: number,
+  ): Promise<boolean>;
+  releaseLock(threadId: string, runId: string): Promise<void>;
+  isThreadRunning(threadId: string): Promise<boolean>;
+}
+
 export type ThreadLock = {
   /**
    * The run id the platform issued, or null when somebody else is running in this conversation.

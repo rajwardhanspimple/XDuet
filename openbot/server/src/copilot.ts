@@ -7,19 +7,19 @@ import type {
 } from "@copilotkit/runtime/v2";
 import {
   type AgentRunner,
-  type CopilotKitIntelligence,
+  CopilotKitIntelligence,
   CopilotRuntime,
   CopilotSseRuntime,
   InMemoryAgentRunner,
   supportsLocalThreadEndpoints,
 } from "@copilotkit/runtime/v2";
 import { createCopilotHonoHandler } from "@copilotkit/runtime/v2/hono";
+import { createNativeCopilotRouter } from "./copilot/native-router";
 import { PROVENANCE_GUIDANCE } from "@openbot/shared/bot-prompt";
 import { defaultModelFor } from "@openbot/shared/model-providers";
 import {
   BuiltInAgentWithSaneHistory,
   CloningRemoteAgent,
-  IntelligenceKnowingANewThread,
   RunBuiltAgent,
   UnavailableAgent,
 } from "@openbot/toolkit/copilotkit/agents";
@@ -1824,6 +1824,16 @@ export function mountCopilotRuntime(
     }
   };
 
+  class IntelligenceKnowingANewThread extends CopilotKitIntelligence {
+    override getThreadMessages(
+      params: Parameters<CopilotKitIntelligence["getThreadMessages"]>[0],
+    ) {
+      return historyOrEmpty(() => super.getThreadMessages(params), {
+        messages: [],
+      });
+    }
+  }
+
   /*
    * One client, used by the runtime and by anything reading a thread beside it, so a hop reads the
    * history a person's run would read rather than a second view of it that could disagree.
@@ -2000,19 +2010,17 @@ function mountLocalCopilotRuntime(
     }
   };
 
-  const runtime = new CopilotSseRuntime({
-    runner,
-    telemetryProperties: {
-      ...runtimeTelemetryProperties(config.accessibility),
-      ...desktopTelemetryProperties(),
-    },
-    ...(config.generativeUi ? { openGenerativeUI: true } : {}),
-    a2ui: { enabled: config.generativeUi },
-    agents: createRequestAgents(identifyActor, resolver) as never,
+  const handler = createNativeCopilotRouter({
+    runner: runner as any,
+    resolver,
+    identifyActor,
+    generativeUiEnabled: config.generativeUi,
+    basePath,
+    readHistory: options.readHistory,
   });
 
   return {
-    handler: createCopilotHonoHandler({ runtime, basePath }),
+    handler,
     learning,
     runner,
     /**

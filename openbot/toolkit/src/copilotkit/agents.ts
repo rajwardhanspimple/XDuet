@@ -7,8 +7,18 @@ import {
 import {
   BuiltInAgent,
   type BuiltInAgentConfiguration,
-  CopilotKitIntelligence,
-} from "@copilotkit/runtime/v2";
+} from "../agents/builtin";
+
+/** Stub for CopilotKitIntelligence so callers do not depend on @copilotkit/runtime */
+export class CopilotKitIntelligence {
+  constructor(public readonly options?: Record<string, unknown>) {}
+  async getThreadMessages(params: {
+    threadId: string;
+    [key: string]: unknown;
+  }): Promise<{ messages: unknown[] }> {
+    return { messages: [] };
+  }
+}
 import {
   defer,
   finalize,

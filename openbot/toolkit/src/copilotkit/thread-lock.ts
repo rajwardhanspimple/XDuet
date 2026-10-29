@@ -1,4 +1,3 @@
-import type { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
 import type { ThreadLock } from "../ports";
 
 /**
@@ -14,13 +13,34 @@ import type { ThreadLock } from "../ports";
 export const THREAD_LOCK_TTL_SECONDS = 120;
 
 /** The four platform calls the lock makes, and nothing else of the client. */
-export type ThreadLockClient = Pick<
-  CopilotKitIntelligence,
-  | "getOrCreateThread"
-  | "ɵacquireThreadLock"
-  | "ɵrenewThreadLock"
-  | "ɵcleanupThreadLock"
->;
+export type ThreadLockClient = {
+  getOrCreateThread: (input: {
+    threadId: string;
+    userId: string;
+    agentId: string;
+    learningContainerId?: string;
+  }) => Promise<unknown>;
+  ɵacquireThreadLock: (input: {
+    threadId: string;
+    runId: string;
+    userId: string;
+    agentId: string;
+    learningContainerId?: string;
+  }) => Promise<{ runId: string }>;
+  ɵrenewThreadLock: (input: {
+    threadId: string;
+    runId: string;
+    ttlSeconds: number;
+    userId?: string;
+    agentId?: string;
+  }) => Promise<unknown>;
+  ɵcleanupThreadLock: (input: {
+    threadId: string;
+    runId: string;
+    userId?: string;
+    agentId?: string;
+  }) => Promise<unknown>;
+};
 
 /**
  * The conversation's run lock, as the platform issues it.

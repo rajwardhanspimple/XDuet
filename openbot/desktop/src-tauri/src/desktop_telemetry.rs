@@ -17,11 +17,8 @@ pub fn initialize<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
             app.path().app_local_data_dir().ok()?.join("telemetry"),
             context,
             telemetry::Config {
-                enabled: true,
-                endpoint: Some(
-                    std::env::var("COPILOTKIT_TELEMETRY_URL")
-                        .unwrap_or_else(|_| "https://telemetry.copilotkit.ai/ingest".into()),
-                ),
+                enabled: false,
+                endpoint: None,
                 max_queue: 256,
             },
         )
