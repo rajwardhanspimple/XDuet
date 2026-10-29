@@ -9,9 +9,9 @@ import {
 import { appConfig } from "@/lib/generated/application-config";
 import { cn } from "@/lib/utils";
 
-/** `ref` tells CopilotKit the visit came from inside a running OpenDuet, not from the README. */
+/** XDuet repository and documentation URL. */
 export const SELF_HOST_URL =
-  "https://www.copilotkit.ai/talk-to-an-engineer?ref=openduet_app";
+  "https://github.com/rajwardhanspimple/XDuet";
 
 /**
  * A slim bar offering help self-hosting this product, until this person closes it.

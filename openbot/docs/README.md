@@ -1,6 +1,6 @@
 # OpenBot docs
 
-Start with the [OpenDuet README](../../README.md) at the repository root, then use these references:
+Start with the [XDuet README](../../README.md) at the repository root, then use these references:
 
 - [Architecture](architecture.md): services, ports, browser governance, computers, components, plugins, knowledge, and security boundaries.
 - [Configuration](configuration.md): environment variables and tenant package YAML.

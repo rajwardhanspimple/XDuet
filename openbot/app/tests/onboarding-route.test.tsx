@@ -196,39 +196,23 @@ test("the local install's step says where its data really lives", async () => {
 
   await heading(view, "Where your data lives");
   const page = document.body.textContent ?? "";
-  // Conversations live in Intelligence, which is CopilotKit's cloud unless self-hosted, and every
-  // message reaches the model: neither is "on this computer".
-  expect(page).toContain(
-    "Conversations and memory are kept in CopilotKit Intelligence",
-  );
-  expect(page).toContain("What you ask goes to your AI model.");
-  expect(page).toContain("Set DO_NOT_TRACK=1 to turn them off.");
-  expect(page).not.toContain("stored on this computer");
-  expect(page).not.toContain("Only what you send to your model leaves it");
+  expect(page).toContain("Your Bots, settings, durable threads, and memory stay in this install's");
+  expect(page).toContain("What you ask goes directly to your configured AI model.");
 });
 
-test("the organization step offers enterprise early access and CopilotKit's other products", async () => {
+test("the organization step offers self-hosting link to XDuet repository", async () => {
   localEvaluation = true;
   const view = open("/onboarding?step=organization");
 
   await heading(view, "Deploy it for your organization");
   expect(document.body.textContent).toContain(
-    "Enterprise deployments are available now in early access.",
+    "Run one container image, or a Helm chart for EKS, GKE or AKS.",
   );
-  const early = view.getByRole("link", { name: "Get early access" });
-  expect(early.getAttribute("href")).toBe(
-    "https://www.copilotkit.ai/talk-to-an-engineer?ref=openduet_app",
+  const repoLink = view.getByRole("link", { name: "View XDuet on GitHub" });
+  expect(repoLink.getAttribute("href")).toBe(
+    "https://github.com/rajwardhanspimple/XDuet",
   );
-  expect(early.getAttribute("target")).toBe("_blank");
-  for (const product of ["openbot", "openmuse", "opendots"]) {
-    const link = view
-      .getAllByRole("link")
-      .find((a) => a.getAttribute("href")?.includes(`/${product}?`));
-    expect(link?.getAttribute("href")).toBe(
-      `https://www.copilotkit.ai/${product}?ref=openduet_onboarding`,
-    );
-    expect(link?.getAttribute("target")).toBe("_blank");
-  }
+  expect(repoLink.getAttribute("target")).toBe("_blank");
 });
 
 test("Next adds a step to the address and to history, and saves it", async () => {
