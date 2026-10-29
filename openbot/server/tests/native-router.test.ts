@@ -197,3 +197,4 @@ describe("Native CopilotKit Router", () => {
     expect(msg.toolCalls[0].function.arguments).toBe('{"table":"users"}');
   });
 });
+
