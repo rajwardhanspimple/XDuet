@@ -1,6 +1,6 @@
 # Architecture
 
-OpenBot combines a React app, a Hono API server, PostgreSQL, CopilotKit Intelligence, AG-UI Bot endpoints, and governed browser computers.
+OpenBot combines a React app, a Hono API server, PostgreSQL, AG-UI Bot endpoints, and governed browser computers. CopilotKit Intelligence supplies durable threads and memory in the deployment shape below; in the local-first shape (`OPENBOT_LOCAL_MODE=true`) there is no Intelligence, the MIT runtime runs in SSE mode, and PostgreSQL holds threads, runs, events, messages and memory itself. See [local-first-plan.md](../../docs/local-first-plan.md).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/architecture-dark.svg">
@@ -21,7 +21,9 @@ Regenerate it with `bun run diagram` after changing anything it shows.
 | `agent-harness`          | 4202                       | The Bot framework harness chosen during setup, one of the `agent-<framework>` images, behind the `harness` compose profile.                 |
 | `supervisor`             | 4500 host / 4300 container | Creates, stops, resets, and lists per-Bot computer containers.                                                                              |
 | PostgreSQL with pgvector | 5432                       | Product data, audit rows, credentials, policy, grants, channels, and components.                                           |
-| CopilotKit Intelligence  | external                   | Durable threads, memory, and realtime gateway.                                                                                              |
+| CopilotKit Intelligence  | external                   | Durable threads, memory, and realtime gateway. Not used when `OPENBOT_LOCAL_MODE=true`; PostgreSQL holds them instead.                       |
+
+The no-Docker local stack (`bun run local:up` from `openbot/`) serves the same components on different ports: app `3110`, server `3101`, agent computer `4100`, and a PostgreSQL you provide, `5433` in the shipped local `.env`.
 
 `scripts/start.sh` starts PostgreSQL, `agent-computer`, `agent-langgraph`, `agent-bot` (skipped when `BOT_PROVIDER=anthropic`, since that sample only takes OpenAI keys) and the supervisor (unless `OPENBOT_ONE_COMPUTER_EACH=false`) through Docker Compose, and runs `migrate`. It then starts `server`, the routines worker (`bun worker/src/index.ts`, the local stand-in for the routines CronJob) and `app` on the host.
 
@@ -34,7 +36,7 @@ The compose file also defines optional SPIRE services. `start.sh` does not start
 3. CopilotKit runtime sends the turn to the configured AG-UI endpoint.
 4. The surface registers available frontend tools: browser tools, MCP tools, and components granted to that Bot.
 5. Acting browser/file/MCP calls return to the server for authorization and audit.
-6. The server streams results back to the app and Intelligence thread.
+6. The server streams results back to the app and to the thread store — Intelligence, or PostgreSQL in local mode.
 
 ## Browser action governance
 

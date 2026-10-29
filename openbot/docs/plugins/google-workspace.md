@@ -65,9 +65,9 @@ Type **Web application**. Under **Authorised redirect URIs**, add this deploymen
 <OPENBOT_PUBLIC_URL>/api/plugins/oauth/callback
 ```
 
-Locally that is `http://localhost:3001/api/plugins/oauth/callback`: port 3001, the API, not 3010, the
-app. It has to match character for character, and OpenBot shows the exact string to paste under the
-**Connection** section of the plugin page.
+With the local stack that is `http://localhost:3101/api/plugins/oauth/callback`: port 3101, the API,
+not 3110, the app. It has to match character for character, and OpenBot shows the exact string to
+paste under the **Connection** section of the plugin page.
 
 Use a client of its own, not the one Google Drive uses. Google revokes a grant per client, so two
 connectors sharing one client means disconnecting either ends both.

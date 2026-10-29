@@ -71,6 +71,15 @@ const ACTING_PATHS = new Set([
   "/type",
   "/key",
   "/scroll",
+  "/hover",
+  "/dblclick",
+  "/rightclick",
+  "/select",
+  "/upload",
+  "/back",
+  "/forward",
+  "/reload",
+  "/wait",
   "/exec",
   "/files/write",
   // Typing a person's login into the page. Refused while they hold the wheel, like any other typing.
@@ -84,5 +93,20 @@ export function actsOnTheComputer(pathname: string): boolean {
 
 /** Only page mutations need a fresh browser snapshot after handback. */
 export function mutatesBrowser(pathname: string): boolean {
-  return ["/navigate", "/click", "/type", "/key", "/scroll"].includes(pathname);
+  return [
+    "/navigate",
+    "/click",
+    "/type",
+    "/key",
+    "/scroll",
+    "/hover",
+    "/dblclick",
+    "/rightclick",
+    "/select",
+    "/upload",
+    "/back",
+    "/forward",
+    "/reload",
+    "/wait",
+  ].includes(pathname);
 }

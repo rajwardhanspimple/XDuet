@@ -8,11 +8,18 @@ OpenBot is configured with environment variables and a tenant package. The API s
 cp .env.example .env
 ```
 
-Fill the required values, then run:
+Fill the required values, then run either shape:
 
 ```sh
+# Local-first, no Docker, no CopilotKit Intelligence. Needs OPENBOT_LOCAL_MODE=true and a local Postgres.
+bun run local:up
+
+# Or the Docker Compose deployment.
 bash scripts/start.sh
 ```
+
+The local stack serves the app on `3110`, the API on `3101` and the computer on `4100`; Compose
+serves `3010` and `3001`. See [Architecture](architecture.md#services-and-ports).
 
 ## Required API server variables
 
@@ -20,13 +27,16 @@ bash scripts/start.sh
 | ----------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`                | PostgreSQL connection string.                                                                         |
 | `KEY_ENCRYPTION_KEY`          | Base64-encoded 32-byte key for encrypted stored credentials. Generate with `openssl rand -base64 32`. |
-| `INTELLIGENCE_API_URL`        | CopilotKit Intelligence API URL.                                                                      |
-| `INTELLIGENCE_GATEWAY_WS_URL` | CopilotKit Intelligence realtime gateway URL.                                                         |
-| `INTELLIGENCE_API_KEY`        | Runtime key for the Intelligence project.                                                             |
+| `INTELLIGENCE_API_URL`        | CopilotKit Intelligence API URL. Required unless `OPENBOT_LOCAL_MODE=true`.                            |
+| `INTELLIGENCE_GATEWAY_WS_URL` | CopilotKit Intelligence realtime gateway URL. Required unless `OPENBOT_LOCAL_MODE=true`.               |
+| `INTELLIGENCE_API_KEY`        | Runtime key for the Intelligence project. Required unless `OPENBOT_LOCAL_MODE=true`.                   |
 
-All five above stop server startup if missing. The three `INTELLIGENCE_` values are additionally
-checked as a set, so a partial set is refused as a misconfiguration rather than treated as
-unconfigured.
+`DATABASE_URL` and `KEY_ENCRYPTION_KEY` stop server startup if missing. The three `INTELLIGENCE_`
+values stop it too, but only when `OPENBOT_LOCAL_MODE` is not `true`: they are then checked as a set,
+so a partial set is refused as a misconfiguration rather than treated as unconfigured. With
+`OPENBOT_LOCAL_MODE=true` they are not read at all — the MIT runtime runs in SSE mode and
+PostgreSQL holds threads, runs, events, messages and locks. That is the local-first shape; see
+[local-first-plan.md](../../docs/local-first-plan.md).
 
 `COPILOTKIT_LICENSE_TOKEN` is optional: managed Intelligence issues no licence token, and a
 self-hosted Intelligence that has one sets this and has it forwarded to the runtime. That
@@ -147,6 +157,28 @@ above: it says where the worker's own process can reach this deployment's API, w
 where the worker runs rather than a fact about the deployment `loadConfig` describes. `start.sh` points
 it at the server's own port on a laptop; the Helm chart's routines CronJob points it at the server's
 in-cluster Service address.
+
+## Decision model
+
+Typed decisions — tool selection, safety review, routing and triage — are answered independently of
+the main chat model. Unset, the decision features are off: the deterministic policy and approval
+rules still run, and every granted tool is offered.
+
+| Variable                    | Default                     | Meaning                                                                                          |
+| --------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------ |
+| `DECISION_PROVIDER`         | unset                       | `opendecider` or `laya` (local), `mercury-decide` (hosted typed-decision API), `mercury-3` (compatibility path over Chat Completions). |
+| `DECISION_BASE_URL`         | `http://localhost:8000`     | `in-process` runs the decider on the in-repo weights inside the API process, with no service to start. Any http(s) URL calls a Laya/OpenDecider server instead. |
+| `DECISION_MODEL`            | `opendecider-nano` / `laya` | Model name sent to the decider.                                                                   |
+| `DECISION_API_KEY`          | unset                       | Key for the hosted decider; `mercury-decide` also accepts `INCEPTION_API_KEY`.                    |
+| `DECISION_TIMEOUT_MS`       | `8000`                      | Per-decision timeout.                                                                             |
+| `DECISION_TOOL_THRESHOLD`   | `0.35`                      | Probability above which a tool is offered for a turn.                                             |
+| `DECISION_SAFETY_THRESHOLD` | `0.5`                       | Probability above which an action is treated as needing approval.                                |
+| `DECISION_ROUTING_THRESHOLD`| `0.6`                       | Confidence needed to route to a specific coworker.                                                |
+| `DECISION_TRIAGE_THRESHOLD` | `0.7`                       | Chosen-outcome probability; below it a message is listed as unsorted rather than guessed.          |
+
+The local stack runs `DECISION_PROVIDER=opendecider`, `DECISION_MODEL=opendecider-nano`,
+`DECISION_BASE_URL=in-process`. A named provider that cannot be reached is a boot error, never a
+silent downgrade to the main model.
 
 ## The provider spec file
 

@@ -45,8 +45,8 @@ Type **Web application**. Under **Authorised redirect URIs**, add this deploymen
 <OPENBOT_PUBLIC_URL>/api/plugins/oauth/callback
 ```
 
-Locally that is `http://localhost:3001/api/plugins/oauth/callback` — port 3001, the API, not 3010,
-the app. The callback lands on the API and redirects back to the app afterwards.
+With the local stack that is `http://localhost:3101/api/plugins/oauth/callback` — port 3101, the
+API, not 3110, the app. The callback lands on the API and redirects back to the app afterwards.
 
 It has to match character for character: scheme, host, port, path, no trailing slash. OpenBot shows
 the exact string to paste under the **Connection** section of the plugin page, built from

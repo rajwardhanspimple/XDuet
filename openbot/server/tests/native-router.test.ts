@@ -1,14 +1,42 @@
 import { describe, expect, it } from "bun:test";
+import type { Message } from "@ag-ui/client";
+import { EventType } from "@ag-ui/core";
 import { Hono } from "hono";
+import { Observable } from "rxjs";
 import { createNativeCopilotRouter } from "../src/copilot/native-router";
 import type { AgentRunner } from "../src/threads/runner-base";
-import { Observable } from "rxjs";
-import { EventType } from "@ag-ui/core";
-import type { Message } from "@ag-ui/client";
 
 describe("Native CopilotKit Router", () => {
+  let lastRun:
+    | { messages: unknown[]; state: unknown; threadId: string }
+    | undefined;
+
+  /**
+   * A server-side agent with the same mutable fields the AG-UI client builds a run from. The
+   * router must seed these before handing the agent to the runner; a mock without them would hide
+   * the empty-conversation regression this router exists to avoid.
+   */
+  const mockAgent = (agentId: string) => ({
+    agentId,
+    description: "Test Agent",
+    messages: [] as Message[],
+    state: {} as unknown,
+    threadId: "",
+    setMessages(messages: Message[]) {
+      this.messages = [...messages];
+    },
+    setState(state: unknown) {
+      this.state = state;
+    },
+  });
+
   const mockRunner: AgentRunner = {
     run: (req) => {
+      lastRun = {
+        messages: [...req.agent.messages],
+        state: req.agent.state,
+        threadId: req.agent.threadId,
+      };
       return new Observable((sub) => {
         sub.next({
           type: EventType.RUN_STARTED,
@@ -85,10 +113,7 @@ describe("Native CopilotKit Router", () => {
     // biome-ignore lint/suspicious/noExplicitAny: test mock resolver
     resolveAgentForActor: async (_actor: any, agentId: string) => {
       if (agentId === "unknown") return null;
-      return {
-        agentId,
-        description: "Test Agent",
-      };
+      return mockAgent(agentId);
     },
   };
 
@@ -136,6 +161,49 @@ describe("Native CopilotKit Router", () => {
     expect(text).toContain("TEXT_MESSAGE_CONTENT");
     expect(text).toContain("Hello from native AG-UI!");
     expect(text).toContain("RUN_FINISHED");
+    /*
+     * The browser sends the turn in the request body, but the AG-UI client builds the model input
+     * from the agent's own fields. The router has to copy the body onto the agent first; otherwise
+     * the runner sees an empty conversation and the model answers with a generic greeting forever.
+     */
+    expect(lastRun).toEqual({
+      messages: [{ role: "user", content: "Hi" }],
+      state: {},
+      threadId: "thread_1",
+    });
+  });
+
+  it("drops greeting-only history but keeps substantive replies", async () => {
+    const res = await app.request("/api/copilotkit/agent/default/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        threadId: "thread_clean",
+        runId: "run_clean",
+        messages: [
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "I'm here. What do you need?" },
+          { role: "user", content: "search wikipedia for cod" },
+          {
+            role: "assistant",
+            content: "I'm here. I found the cod page.",
+          },
+          { role: "user", content: "summarize it" },
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(lastRun).toEqual({
+      messages: [
+        { role: "user", content: "hi" },
+        { role: "user", content: "search wikipedia for cod" },
+        { role: "assistant", content: "I'm here. I found the cod page." },
+        { role: "user", content: "summarize it" },
+      ],
+      state: {},
+      threadId: "thread_clean",
+    });
   });
 
   it("POST /api/copilotkit/agent/:id/run rejects busy thread with 409", async () => {

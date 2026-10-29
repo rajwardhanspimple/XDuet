@@ -1,9 +1,63 @@
 import type { BaseEvent, Message } from "@ag-ui/client";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { AgentActor } from "../agents/profile-types";
 import type { ActorAgentResolver } from "../agents/agent-resolver";
+import type { AgentActor } from "../agents/profile-types";
 import type { AgentRunner } from "../threads/runner-base";
+
+/**
+ * Assistant replies that are only a greeting.
+ *
+ * A long thread can collect these, and replaying them every turn teaches the model to answer the
+ * next real request with another greeting. They carry no task context, so they are removed from
+ * the model's copy of the history. Only exact normalized matches are dropped: a reply that starts
+ * with a greeting and then says something useful is kept.
+ */
+const GENERIC_GREETING_REPLIES = new Set([
+  "hello how can i help",
+  "hello what do you need",
+  "hey im here and ready to help what do you need",
+  "hey what are you working on",
+  "hey what can i help with",
+  "hi how can i help",
+  "im here",
+  "im here and ready to help",
+  "im here and ready to help what do you need",
+  "im here what do you need",
+  "im here what do you need mail calendar or something else",
+  "im ready to help",
+  "im ready to help what do you need",
+  "im ready what do you need",
+  "ready to help",
+  "ready to help what do you need",
+  "ready when you are",
+  "ready when you are what do you need",
+  "what can i help with",
+  "what can i help with today",
+  "what can i help you with",
+  "what can i help you with today",
+  "what do you need",
+  "what would you like help with",
+  "what would you like me to help with",
+]);
+
+function isGenericGreeting(message: Message): boolean {
+  if (message.role !== "assistant" || typeof message.content !== "string") {
+    return false;
+  }
+  return GENERIC_GREETING_REPLIES.has(
+    message.content
+      .toLowerCase()
+      .replace(/['’]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim(),
+  );
+}
+
+function withoutGreetingEchoes(messages: Message[]): Message[] {
+  const kept = messages.filter((message) => !isGenericGreeting(message));
+  return kept.length === messages.length ? messages : kept;
+}
 
 export interface NativeRouterOptions {
   runner: AgentRunner;
@@ -163,6 +217,20 @@ export function createNativeCopilotRouter(options: NativeRouterOptions): Hono {
         404,
       );
     }
+
+    /*
+     * The AG-UI client builds the model input from the agent's own `messages`, not from the
+     * `messages` field on the run input. CopilotKit's HTTP handler seeds these three fields
+     * before every run; this router replaces that handler, so it must do the same. Without this
+     * the server-side agent starts with an empty conversation, sees only its system prompt, and
+     * answers every turn with the same generic greeting.
+     */
+    const history = Array.isArray(rawBody.messages)
+      ? withoutGreetingEchoes(rawBody.messages)
+      : [];
+    agent.setMessages(history);
+    agent.setState(rawBody.state ?? {});
+    agent.threadId = rawBody.threadId;
 
     // Contention Precondition: Check lock BEFORE initiating streamSSE.
     const isBusy = await options.runner.isRunning({

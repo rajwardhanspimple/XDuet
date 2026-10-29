@@ -258,6 +258,18 @@ export function createWorkspace(
     },
 
     /** Read a text file. Bounded, and it says when it gave you less than the whole thing. */
+    /**
+     * The real path of a workspace file, for handing to something that needs a path rather than
+     * contents — a page's file input, for instance, which Playwright fills from disk.
+     *
+     * Same containment as a read: relative, no `..`, must exist, symlinks resolved and re-checked.
+     * Exposed deliberately narrow: it returns a path and nothing else, so it cannot be used to list
+     * the workspace or read a file the caller was not already allowed to read.
+     */
+    async absolute(requested: string): Promise<string> {
+      return resolvePath(requested, false);
+    },
+
     async read(requested: string): Promise<{
       path: string;
       text: string;

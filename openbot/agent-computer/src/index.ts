@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+﻿import { mkdir, rm, writeFile } from "node:fs/promises";
 import { setDefaultAutoSelectFamily } from "node:net";
 import { join } from "node:path";
 import { serve } from "bun";
@@ -413,7 +413,7 @@ async function readablePageText(
      * Cut between characters, not through one. #539 fixed this for a control's name and value in the
      * snapshot and left the page text, which is the same bug at thirty times the length: `slice`
      * counts UTF-16 code units, an emoji is two, and a limit landing between the halves hands the Bot
-     * a lone high surrogate that reads as U+FFFD — a character that is not on the page.
+     * a lone high surrogate that reads as U+FFFD â€” a character that is not on the page.
      *
      * More likely to bite here than there, for the reason the limit is bigger. A 200-unit control
      * name rarely reaches an emoji; 6000 units of somebody's page usually passes through several, and
@@ -1465,9 +1465,26 @@ type ActionBody = {
   key?: unknown;
   deltaY?: unknown;
   submit?: unknown;
+  values?: unknown;
+  path?: unknown;
+  timeoutMs?: unknown;
 };
 
-const ACTIONS = new Set(["/click", "/type", "/key", "/scroll"]);
+const ACTIONS = new Set([
+  "/click",
+  "/type",
+  "/key",
+  "/scroll",
+  "/hover",
+  "/dblclick",
+  "/rightclick",
+  "/select",
+  "/upload",
+  "/back",
+  "/forward",
+  "/reload",
+  "/wait",
+]);
 
 const HUMAN_INPUT = new Set([
   "/human/click",
@@ -1617,6 +1634,116 @@ async function performAction(
     return { action: "key", key: body.key, ref, url: target.url() };
   }
 
+  if (action === "/hover") {
+    if (!ref) throw new Error("A hover needs the ref of an element to hover.");
+    await (await resolveRef(session, target, ref, expected)).hover(acting);
+    return { action: "hover", ref, url: target.url() };
+  }
+
+  // Double and right clicks exist because menus and text selection are not reachable with a single
+  // left click, and asking the model to imitate one with two calls opens a menu it then cannot read.
+  if (action === "/dblclick") {
+    if (!ref) throw new Error("A double click needs the ref of an element.");
+    await (await resolveRef(session, target, ref, expected)).dblclick(acting);
+    return { action: "dblclick", ref, url: target.url() };
+  }
+
+  if (action === "/rightclick") {
+    if (!ref) throw new Error("A right click needs the ref of an element.");
+    await (await resolveRef(session, target, ref, expected)).click({
+      ...acting,
+      button: "right",
+    });
+    return { action: "rightclick", ref, url: target.url() };
+  }
+
+  /*
+   * A native <select> cannot be operated by clicking: the option list is drawn by the operating
+   * system, so it is not in the page, not in the snapshot, and not clickable. `selectOption` is the
+   * only way through, and without it every dropdown on every form is a dead end for the Bot.
+   */
+  if (action === "/select") {
+    if (!ref) throw new Error("Selecting an option needs the ref of the select.");
+    const values = Array.isArray(body.values)
+      ? body.values.filter((value): value is string => typeof value === "string" && value !== "")
+      : [];
+    if (values.length === 0) {
+      throw new Error("Selecting an option needs one or more values.");
+    }
+    const chosen = await (
+      await resolveRef(session, target, ref, expected)
+    ).selectOption(values, acting);
+    return { action: "select", ref, selected: chosen, url: target.url() };
+  }
+
+  /*
+   * Uploading reads from the Bot's own workspace and nowhere else: the path goes through the same
+   * containment check as a file read, so an absolute path, a `..`, or a symlink pointing outside is
+   * refused before Playwright ever sees it. A file input is otherwise an arbitrary-read primitive.
+   */
+  if (action === "/upload") {
+    if (!ref) throw new Error("Uploading needs the ref of the file input.");
+    if (typeof body.path !== "string" || !body.path.trim()) {
+      throw new Error("Uploading needs the path of a file in your workspace.");
+    }
+    const file = await workspace.absolute(body.path);
+    await (await resolveRef(session, target, ref, expected)).setInputFiles(
+      file,
+      acting,
+    );
+    return { action: "upload", ref, path: body.path, url: target.url() };
+  }
+
+  if (action === "/back" || action === "/forward") {
+    const options = { waitUntil: "domcontentloaded" as const, timeout: NAVIGATION_TIMEOUT_MS };
+    const response =
+      action === "/back"
+        ? await target.goBack(options)
+        : await target.goForward(options);
+    return {
+      action: action.slice(1),
+      // Null means there was no history entry that way, which is not an error: the Bot asked to go
+      // back at the first page of the session, and telling it so is more useful than throwing.
+      moved: response !== null,
+      url: target.url(),
+      title: await target.title().catch(() => ""),
+    };
+  }
+
+  if (action === "/reload") {
+    await target.reload({ waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS });
+    return { action: "reload", url: target.url(), title: await target.title().catch(() => "") };
+  }
+
+  /*
+   * Wait for something to appear. Playwright already auto-waits inside each action, so this is for
+   * the gap between "the page loaded" and "the thing is there" â€” a slow list, a spinner that clears,
+   * a result rendered after a request the action did not trigger.
+   */
+  if (action === "/wait") {
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    const requested = Number(body.timeoutMs ?? 10_000);
+    const timeout = Math.min(
+      Math.max(Number.isFinite(requested) ? requested : 10_000, 500),
+      30_000,
+    );
+    if (ref) {
+      await (await resolveRef(session, target, ref, expected)).waitFor({
+        state: "visible",
+        timeout,
+      });
+      return { action: "wait", ref, appeared: true, url: target.url() };
+    }
+    if (!text) {
+      throw new Error("A wait needs either the ref of an element or the text to wait for.");
+    }
+    await target
+      .getByText(text, { exact: false })
+      .first()
+      .waitFor({ state: "visible", timeout });
+    return { action: "wait", text, appeared: true, url: target.url() };
+  }
+
   // Scroll. A plain wheel event on the page, which is what moves a long form, rather than scrolling a
   // specific element into view: the Bot asked to see further down, not to hunt for one control.
   const parsed = parseScrollDelta(body.deltaY);
@@ -1693,3 +1820,4 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     void shutDown(signal, 0);
   });
 }
+

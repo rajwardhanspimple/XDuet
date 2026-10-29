@@ -63,6 +63,29 @@ async function main() {
     // optional if missing
   }
 
+  /*
+   * The skills this deployment actually asks about. Optional, because a fork that has not run
+   * `build-runtime-skill-dataset.ts` still trains; without it the tool head keeps the legacy
+   * vocabulary and selects nothing, which is what it did before this file existed.
+   */
+  const runtimeSkillsPath = join(root, "data", "tools", "runtime-skills.jsonl");
+  let rawRuntimeSkills: any[] = [];
+  try {
+    rawRuntimeSkills = (
+      await readFile(runtimeSkillsPath, "utf8")
+    )
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l));
+    console.info(
+      `      Loaded ${rawRuntimeSkills.length} runtime skill rows from ${runtimeSkillsPath}`,
+    );
+  } catch {
+    console.info(
+      `      No ${runtimeSkillsPath}; tool selection keeps the legacy skill vocabulary only.`,
+    );
+  }
+
   function toSample(s: any): TrainingSample {
     return {
       id: s.id,
@@ -87,6 +110,7 @@ async function main() {
     ...rawDownloads.map(toSample),
     ...rawGolden.map(toSample),
     ...rawRealGmail.map(toSample),
+    ...rawRuntimeSkills.map(toSample),
   ];
 
   console.info(
@@ -313,6 +337,25 @@ async function main() {
   // 2. TOOLS MODEL FITTING
   // ===========================================================================
   const toolSamples = dataset.filter((s) => s.domain === "tool_selection");
+  /*
+   * Two vocabularies, deliberately.
+   *
+   * The first eight are the legacy labels the shipped datasets were written against, kept because
+   * those rows are still in the corpus. The rest are the slugs this deployment asks about, taken
+   * from `data/tools/runtime-skills.jsonl`. A slug with no rows in the corpus would be fitted on no
+   * evidence — bias 0, tokens empty — and sigmoid(0) is 0.5, above the 0.35 threshold, so it would
+   * score every request as a match. Only labels that actually appear with rows here.
+   */
+  const runtimeSkillSlugs = [
+    ...new Set(
+      rawRuntimeSkills.flatMap((row: any) =>
+        Object.keys(row.answers ?? {}).filter(
+          (key) => (row.answers?.[key]?.noul ?? 0) >= 0.5,
+        ),
+      ),
+    ),
+  ] as string[];
+
   const skills = [
     "weather",
     "calendar",
@@ -322,6 +365,7 @@ async function main() {
     "computer",
     "database",
     "memory",
+    ...runtimeSkillSlugs,
   ];
   const toolSkillsConfig: Record<
     string,

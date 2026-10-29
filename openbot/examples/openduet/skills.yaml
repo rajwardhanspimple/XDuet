@@ -71,6 +71,9 @@ skills:
       would ask twice. Never say a reply was sent until the tool says so, and if they refuse, say
       plainly that it was not sent.
     tools:
+      # Search is what "find the message the person means" above actually needs. Without it the run
+      # selected this skill, held read and send, and answered that it could not look through mail.
+      - google-workspace/gmail_search_messages
       - google-workspace/gmail_read_message
       - google-workspace/gmail_send_reply
 

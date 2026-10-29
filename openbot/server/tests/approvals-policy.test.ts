@@ -224,6 +224,34 @@ describe("built-in safety requirements", () => {
       ),
     ).toBeUndefined();
   });
+
+  test("a letter about a credential is not a credential change", () => {
+    /*
+     * The complaint this exists for. A support email saying the account was disabled and the
+     * password no longer works was handed off as though the Bot were changing the credential, so
+     * the one thing the person delegated — send this letter — became theirs to do by hand.
+     */
+    const letter = candidate({
+      toolRef: "google-workspace/gmail_send_reply",
+      effect: "write",
+      args: {
+        to: ["support-in@google.com"],
+        subject: "Disabled account follow-up",
+        body: "My account was disabled and I cannot reset my password or use my recovery code. Please review it.",
+      },
+    });
+    expect(safetyRequirement(letter)).toBeUndefined();
+
+    /*
+     * And the net still catches the thing it was built for: the same word in the NAME of what is
+     * being filled in, where the call really is entering a credential.
+     */
+    const typing = candidate({
+      toolRef: "computer_type",
+      args: { ref: "e3", text: "hunter2", field: "New password" },
+    });
+    expect(safetyRequirement(typing)?.id).toBe("credentials");
+  });
 });
 
 describe("the reviewer's safety classification", () => {

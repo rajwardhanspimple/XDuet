@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { ToolLine } from "@/components/channels/tool-line";
 import { CommandOutput } from "@/components/computer/command-output";
 import { ComputerView } from "@/components/computer/computer-view";
@@ -864,5 +864,165 @@ export function ComputerTools() {
     ),
   });
 
+  useFrontendTool({
+    available: offered.browser,
+    name: "computer_hover",
+    description:
+      "Move the pointer over an element without clicking it, which reveals menus, tooltips and hover-only controls.",
+    parameters: z.object({
+      ref: z.string().describe("The ref of the element from the latest snapshot."),
+    }),
+    handler: async (
+      input: { ref: string },
+      { signal }: { signal?: AbortSignal } = {},
+    ) =>
+      callComputer(
+        bot.current,
+        "/hover",
+        { method: "POST", body: input },
+        signal,
+      ),
+    render: ({ result, status }) => (
+      <ActionLine
+        running={status !== "complete"}
+        label="Hovered"
+        refused={outcomeOf(result).refused === true}
+        failed={didNotWork(outcomeOf(result))}
+      />
+    ),
+  });
+
+  useFrontendTool({
+    available: offered.browser,
+    name: "computer_select",
+    description:
+      "Choose an option in a dropdown. Native selects cannot be opened by clicking â€” their list is drawn by the OS and never appears in the snapshot â€” so use this instead.",
+    parameters: z.object({
+      ref: z.string().describe("The ref of the select element."),
+      values: z
+        .array(z.string())
+        .describe("Option values (or visible labels) to choose. One entry for a normal select."),
+    }),
+    handler: async (
+      input: { ref: string; values: string[] },
+      { signal }: { signal?: AbortSignal } = {},
+    ) =>
+      callComputer(
+        bot.current,
+        "/select",
+        { method: "POST", body: input },
+        signal,
+      ),
+    render: ({ result, status }) => (
+      <ActionLine
+        running={status !== "complete"}
+        label="Chose an option"
+        refused={outcomeOf(result).refused === true}
+        failed={didNotWork(outcomeOf(result))}
+      />
+    ),
+  });
+
+  useFrontendTool({
+    available: offered.browser,
+    name: "computer_upload",
+    description:
+      "Attach a file from your workspace to a file input on the page. Only paths inside the workspace are allowed.",
+    parameters: z.object({
+      ref: z.string().describe("The ref of the file input from the latest snapshot."),
+      path: z
+        .string()
+        .describe("The file's path inside your workspace, as returned by computer_list_files."),
+    }),
+    handler: async (
+      input: { ref: string; path: string },
+      { signal }: { signal?: AbortSignal } = {},
+    ) =>
+      callComputer(
+        bot.current,
+        "/upload",
+        { method: "POST", body: input },
+        signal,
+      ),
+    render: ({ result, status }) => (
+      <ActionLine
+        running={status !== "complete"}
+        label="Attached a file"
+        refused={outcomeOf(result).refused === true}
+        failed={didNotWork(outcomeOf(result))}
+      />
+    ),
+  });
+
+  useFrontendTool({
+    available: offered.browser,
+    name: "computer_history",
+    description:
+      "Go back, go forward, or reload. Use this instead of navigating to a URL you already visited.",
+    parameters: z.object({
+      direction: z
+        .enum(["back", "forward", "reload"])
+        .describe("Which way through the page's history to move."),
+    }),
+    handler: async (
+      input: { direction: "back" | "forward" | "reload" },
+      { signal }: { signal?: AbortSignal } = {},
+    ) =>
+      callComputer(
+        bot.current,
+        `/${input.direction}`,
+        { method: "POST", body: {} },
+        signal,
+      ),
+    render: ({ result, status }) => (
+      <ActionLine
+        running={status !== "complete"}
+        label="Moved through history"
+        refused={outcomeOf(result).refused === true}
+        failed={didNotWork(outcomeOf(result))}
+      />
+    ),
+  });
+
+  useFrontendTool({
+    available: offered.browser,
+    name: "computer_wait",
+    description:
+      "Wait for an element or a piece of text to appear, for pages that fill in after they load. Prefer this over snapshotting in a loop.",
+    parameters: z.object({
+      text: z
+        .string()
+        .optional()
+        .describe("Text to wait for on the page. Give this or a ref."),
+      ref: z
+        .string()
+        .optional()
+        .describe("The ref of an element to wait until it is visible."),
+      timeoutMs: z
+        .number()
+        .optional()
+        .describe("How long to wait, in milliseconds. Defaults to 10000, capped at 30000."),
+    }),
+    handler: async (
+      input: { text?: string; ref?: string; timeoutMs?: number },
+      { signal }: { signal?: AbortSignal } = {},
+    ) =>
+      callComputer(
+        bot.current,
+        "/wait",
+        { method: "POST", body: input },
+        signal,
+      ),
+    render: ({ result, status }) => (
+      <ActionLine
+        running={status !== "complete"}
+        label="Waited for the page"
+        refused={outcomeOf(result).refused === true}
+        failed={didNotWork(outcomeOf(result))}
+      />
+    ),
+  });
+
   return null;
 }
+

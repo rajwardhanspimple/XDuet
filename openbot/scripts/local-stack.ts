@@ -195,7 +195,25 @@ function stop(pid: number): void {
   }
 }
 
+/**
+ * Bun 1.2 or newer, said out loud.
+ *
+ * On 1.1 the migrator cannot resolve its own `../migrator.js`, and the launcher surfaces only that
+ * module error — which reads like a broken checkout rather than an old runtime, and sends you
+ * looking at node_modules instead of the interpreter. A machine can easily have an older Bun first
+ * on PATH. Fail here, with the version and the binary that is actually running, instead.
+ */
+function assertBunVersion(): void {
+  const [major = 0, minor = 0] = Bun.version.split(".").map(Number);
+  if (major > 1 || (major === 1 && minor >= 2)) return;
+  throw new Error(
+    `The local stack needs Bun 1.2 or newer; this is ${Bun.version} (${process.execPath}). ` +
+      "Install a newer Bun, or run this script with one explicitly.",
+  );
+}
+
 async function up(): Promise<void> {
+  assertBunVersion();
   const environment = await loadEnvironment();
   if (environment.OPENBOT_LOCAL_MODE?.trim().toLowerCase() !== "true") {
     throw new Error(

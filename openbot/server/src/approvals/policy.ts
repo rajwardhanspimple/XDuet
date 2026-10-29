@@ -129,6 +129,55 @@ function flatten(value: unknown, depth = 0): string {
 const NOT_ACCOUNT_ACTIONS =
   /^(computer_(write_file|read_file|list_files|run_command)|host\/)/;
 
+/**
+ * Keys whose value is prose the person is sending, not a description of what the call changes.
+ *
+ * WHY THE FLOOR IGNORES THEM. The safety net below is a keyword scan over "the words of the
+ * action", which is right for an argument that names a change (`newPassword`, `securityQuestion`)
+ * and wrong for the body of a letter. A support email saying "my account was disabled and I cannot
+ * reset my password" was handed off as though the Bot were changing a credential — the one thing a
+ * person delegating their mail does not want, and a false hand-off every time the correspondence is
+ * *about* a credential.
+ *
+ * WHAT IS STILL CAUGHT. Field NAMES still travel through `flatten` below, so a `password` or
+ * `apiKey` argument still hands off; `candidate.toolRef` still catches `change_password`-shaped
+ * tools; `subject` is short and deliberately still scanned. And values that are themselves secrets —
+ * private keys, provider tokens, bearer headers — are refused earlier and harder by
+ * `inspectToolArguments`, which reads every value and does not depend on this scan.
+ */
+const MESSAGE_CONTENT_KEYS = new Set([
+  "body",
+  "bodyhtml",
+  "bodytext",
+  "html",
+  "text",
+  "content",
+  "contents",
+  "message",
+  "messages",
+  "note",
+  "notes",
+  "comment",
+  "comments",
+  "description",
+  "markdown",
+  "snippet",
+]);
+
+function withoutMessageContent(value: unknown, depth = 0): unknown {
+  if (depth > 6 || value === null || value === undefined) return value;
+  if (Array.isArray(value)) {
+    return value.map((entry) => withoutMessageContent(entry, depth + 1));
+  }
+  if (typeof value !== "object") return value;
+  const kept: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (MESSAGE_CONTENT_KEYS.has(key.toLowerCase().replace(/[-_\s]/g, ""))) continue;
+    kept[key] = withoutMessageContent(entry, depth + 1);
+  }
+  return kept;
+}
+
 export function safetyRequirement(
   candidate: ApprovalCandidate,
 ): { id: string; reason: string } | undefined {
@@ -137,7 +186,7 @@ export function safetyRequirement(
   const words = [
     candidate.toolRef,
     candidate.scope,
-    flatten(candidate.args),
+    flatten(withoutMessageContent(candidate.args)),
     flatten(candidate.target),
   ].join(" ");
   const hit = SAFETY_REQUIREMENTS.find((entry) => entry.pattern.test(words));

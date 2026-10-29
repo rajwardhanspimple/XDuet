@@ -2,17 +2,18 @@
 
 **Goal:** remove the CopilotKit Intelligence subscription and every CopilotKit cloud call, keep the platform, data, threads, memory, approvals, computers, and UI local, and use external APIs only for models.
 
-**Status (2026-10-28):** Target A is implemented and verified for a single-user local install. The server runs the MIT runtime in local SSE mode; Postgres now holds threads, runs, events, messages, state, and locks; Mercury 3 handles generation and tools; and the decision model handles tool selection, safety review, routing, and triage. A conversation was sent, the server was restarted, and the same conversation history replayed in the UI. A due routine fired through the local worker and appended its turn to the same durable thread.
+**Status (2026-10-29):** Target A is implemented and verified for a single-user local install, including a real tool-using turn in the UI. The server runs the MIT runtime in local SSE mode; Postgres now holds threads, runs, events, messages, state, and locks; Mercury 3 handles generation and tools; and the decision model handles tool selection, safety review, routing, and triage. A conversation was sent, the server was restarted, and the same conversation history replayed in the UI. A due routine fired through the local worker and appended its turn to the same durable thread.
 
 **Implemented today**
 
 - `OPENBOT_LOCAL_MODE=true` removes the Intelligence requirement; local setup, the self-host banner, and `start.sh` understand local mode.
 - `PostgresAgentRunner` persists every run, AG-UI event, message snapshot, state snapshot, and thread lease. Restart recovery closes interrupted runs, clears stale locks, and reloads the runtime's synchronous thread read model from Postgres. Message snapshots carry their array position, so a restart does not reorder a conversation.
 - The runtime's local thread endpoints keep the same synchronous contract the app already calls; Postgres is the source of truth, the in-process cache is the read model, and `readThreadMessages` checks ownership for history reads. A single local API process is the supported shape.
+- The native AG-UI router seeds `agent.messages`, `agent.state` and `agent.threadId` before `runner.run`, the way CopilotKit's HTTP handler did. Without that seeding the server-side agent began every turn with an empty conversation, saw only its system prompt, and answered each request with the same greeting. Assistant rows that are only a canned greeting are dropped from the model's copy of the history; substantive replies, user turns, tool calls and tool results are kept.
 - A routine fired through the worker and appended its turn to the same durable thread. Handoff uses `copilotRuntime.runner`, `copilotRuntime.history`, and the durable `threadLock`; group chat uses the same `routineIntelligence` + `routineAgentRunner` pair.
 - `bun run local:up`, `bun run local:status`, and `bun run local:down` start and stop the agent computer, server, worker, and app without Docker. Postgres is the only external local prerequisite.
 - Mercury 3 is forced through OpenAI-compatible Chat Completions (not `/v1/responses`) for chat, streaming, JSON mode, and tool calls.
-- A typed decision client supports `mercury-decide` (the active path), `mercury-3` as a compatibility path, and local `opendecider` or `laya`.
+- A typed decision client supports `mercury-decide` (hosted), `mercury-3` as a compatibility path, and local `opendecider` or `laya`. The local stack runs `opendecider` with `DECISION_BASE_URL=in-process`, on the in-repo weights, so a decision costs no network hop.
 - Decision-backed tool selection fails open; decision-backed safety review fails closed and can only add approval or hand-off. Decision-backed routing is authoritative over the roster and falls back to the default coworker; decision-backed triage is a typed `noul` and fails closed to "unsorted" rather than guessing "can wait".
 - Chat titles in local mode are taken from the person's first line instead of a second model call.
 - Decision, routing, triage, configuration, setup, selection, approval, title, durable-runner, routine, handoff, and group-chat tests pass; server and test typechecks pass.
@@ -738,11 +739,15 @@ BOT_PROVIDER=openai
 BOT_MODEL=mercury-3
 AGENT_BOT_MODEL=mercury-3
 
-# Decision model
-DECISION_PROVIDER=mercury-decide     # mercury-decide | mercury-3 | opendecider | laya
-DECISION_BASE_URL=https://api.inceptionlabs.ai/v1
-DECISION_MODEL=mercury-decide
-DECISION_API_KEY=                    # or INCEPTION_API_KEY
+# Decision model. The local default: in this process, on the in-repo weights, no extra service.
+DECISION_PROVIDER=opendecider        # opendecider | laya (local) | mercury-decide | mercury-3 (hosted)
+DECISION_MODEL=opendecider-nano
+DECISION_BASE_URL=in-process         # an http(s) URL instead calls a Laya/OpenDecider server
+# Hosted alternative, Inception's typed-decision endpoint:
+# DECISION_PROVIDER=mercury-decide
+# DECISION_BASE_URL=https://api.inceptionlabs.ai/v1
+# DECISION_MODEL=mercury-decide
+# DECISION_API_KEY=                  # or INCEPTION_API_KEY
 DECISION_TIMEOUT_MS=8000
 DECISION_TOOL_THRESHOLD=0.35
 DECISION_SAFETY_THRESHOLD=0.5
@@ -883,4 +888,5 @@ These are estimates, not commitments. The thread runner and the approval/resume 
 - User A cannot access user B’s threads.
 - Triage, tool-selection, and safety evals meet their thresholds.
 - `start.sh` does not check a licence.
+- A UI turn selects a tool, the computer executes it, and the result returns to the conversation. Verified 2026-10-29: `computer_navigate` opened a Wikipedia page and the answer quoted it.
 - The rollback path to Intelligence mode is documented and tested.

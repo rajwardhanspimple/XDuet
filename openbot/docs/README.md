@@ -10,6 +10,7 @@ Start with the [XDuet README](../../README.md) at the repository root, then use 
 - [Automatic Learning](automatic-learning.md): which Bots contribute conversations to a Learning container, and receive its published skills.
 - [Public-web research](web-research.md): search and page reading through Parallel, Exa or Firecrawl.
 - Plugins, one connector per page — what an administrator registers, what each person consents to, and what the failures mean:
+  - [Connect every plugin](plugins/connect-all.md): the end-to-end Google, Notion, Composio and Arcade setup for the local stack.
   - [Composio](plugins/composio.md): the broker, and so the one page here that is a catalogue of apps rather than a single connector.
   - [Google Drive](plugins/google-drive.md)
   - [Gmail and Google Calendar](plugins/google-workspace.md): including the fake Google for trying it without an account.

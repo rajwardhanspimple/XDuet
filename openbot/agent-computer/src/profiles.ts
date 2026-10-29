@@ -500,6 +500,72 @@ export function createProfiles(root: string, onClosed: BrowserClosed) {
           ...(proxy ? { proxy } : {}),
         });
         /*
+         * What the flags cannot fix.
+         *
+         * `ignoreDefaultArgs` clears `navigator.webdriver` and the automation banner, and the network
+         * layer rewrites `HeadlessChrome` out of the user agent. What remains is page-visible and
+         * cheap for a site to read: an empty plugin list, a single language, a software WebGL
+         * renderer, and no `window.chrome` object — the exact tells that headless checks look for
+         * before they decide to serve a challenge instead of the page.
+         *
+         * Defined, never deleted, and only when the value is missing or obviously headless, so an
+         * ordinary browser that already reports these is left exactly as it is.
+         */
+        await context.addInitScript(() => {
+          const define = (target: object, key: string, value: unknown) => {
+            try {
+              Object.defineProperty(target, key, {
+                get: () => value,
+                configurable: true,
+              });
+            } catch {
+              // A page that froze the property is not worth breaking the load over.
+            }
+          };
+
+          if (!("chrome" in window)) {
+            (window as unknown as { chrome: unknown }).chrome = { runtime: {} };
+          }
+
+          if (navigator.languages?.length === 1) {
+            define(navigator, "languages", ["en-US", "en"]);
+          }
+
+          if (navigator.plugins?.length === 0) {
+            const names = [
+              "PDF Viewer",
+              "Chrome PDF Viewer",
+              "Chromium PDF Viewer",
+              "Microsoft Edge PDF Viewer",
+              "WebKit built-in PDF",
+            ];
+            const plugins = names.map((name) => ({ name, filename: "internal-pdf-viewer" }));
+            define(navigator, "plugins", Object.assign(plugins, { length: plugins.length }));
+          }
+
+          // WebGL reports "Google Inc. (Google)" with a SwiftShader renderer in headless. A real
+          // desktop GPU is what every fingerprinting script expects, so say that instead.
+          const patchGl = (prototype: object) => {
+            const original = (prototype as { getParameter?: unknown }).getParameter;
+            if (typeof original !== "function") return;
+            (prototype as { getParameter: unknown }).getParameter = function (
+              this: unknown,
+              parameter: number,
+            ) {
+              if (parameter === 0x9245) return "Intel Inc.";
+              if (parameter === 0x9246) return "Intel Iris OpenGL Engine";
+              return (original as (this: unknown, p: number) => unknown).call(
+                this,
+                parameter,
+              );
+            };
+          };
+          const canvas = document.createElement("canvas");
+          const gl = canvas.getContext("webgl");
+          if (gl) patchGl(Object.getPrototypeOf(gl));
+        });
+
+        /*
          * Session cookies back before anything navigates, so the first request a site sees from this
          * launch is already signed in. Not for a native Chrome: its cookies are protected by the OS
          * keychain, and a plain file beside them would undo that. The container profile uses the
