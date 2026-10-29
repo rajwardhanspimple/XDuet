@@ -1,5 +1,5 @@
-import type { AbstractAgent, BaseEvent, Message } from "@ag-ui/client";
-import { Hono, type Context } from "hono";
+import type { BaseEvent, Message } from "@ag-ui/client";
+import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { AgentActor } from "../agents/profile-types";
 import type { ActorAgentResolver } from "../agents/agent-resolver";
@@ -18,9 +18,11 @@ export interface NativeRouterOptions {
  * Normalizes message records from persistence to the OpenAI format required
  * by @copilotkit/react-core/v2's ToolCallRenderer and headless hooks.
  */
-export function normalizeMessagesForHydration(rawMessages: any[]): any[] {
+export function normalizeMessagesForHydration(
+  rawMessages: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
   return rawMessages.map((m) => {
-    const msg: any = {
+    const msg: Record<string, unknown> = {
       id: m.id,
       role: m.role,
     };
@@ -36,17 +38,23 @@ export function normalizeMessagesForHydration(rawMessages: any[]): any[] {
 
     // Normalize tool calls to OpenAI function calling format
     if (m.toolCalls && Array.isArray(m.toolCalls) && m.toolCalls.length > 0) {
-      msg.toolCalls = m.toolCalls.map((tc: any) => ({
-        id: tc.id,
-        type: "function",
-        function: {
-          name: tc.function?.name ?? tc.name,
-          arguments:
-            typeof (tc.function?.arguments ?? tc.args) === "string"
-              ? (tc.function?.arguments ?? tc.args)
-              : JSON.stringify(tc.function?.arguments ?? tc.args ?? {}),
+      msg.toolCalls = (m.toolCalls as Array<Record<string, unknown>>).map(
+        (tc) => {
+          const fn = tc.function as Record<string, unknown> | undefined;
+          const fnArgs = fn?.arguments ?? tc.args;
+          return {
+            id: tc.id,
+            type: "function",
+            function: {
+              name: fn?.name ?? tc.name,
+              arguments:
+                typeof fnArgs === "string"
+                  ? fnArgs
+                  : JSON.stringify(fnArgs ?? {}),
+            },
+          };
         },
-      }));
+      );
     }
 
     if (m.toolCallId) {
@@ -84,9 +92,13 @@ export function createNativeCopilotRouter(options: NativeRouterOptions): Hono {
       const agentMap: Record<string, unknown> = {};
 
       for (const [id, agent] of Object.entries(availableAgents)) {
+        const desc =
+          typeof agent === "object" && agent !== null && "description" in agent
+            ? String((agent as { description?: unknown }).description || "")
+            : "";
         agentMap[id] = {
-          name: (agent as any).description || id,
-          description: (agent as any).description || "",
+          name: desc || id,
+          description: desc,
           className: "AbstractAgent",
           capabilities: {},
         };
@@ -109,7 +121,7 @@ export function createNativeCopilotRouter(options: NativeRouterOptions): Hono {
         openGenerativeUIEnabled: options.generativeUiEnabled ?? true,
         telemetryDisabled: true,
       });
-    } catch (err) {
+    } catch (_err) {
       return c.json({
         version: "1.77.0",
         agents: {

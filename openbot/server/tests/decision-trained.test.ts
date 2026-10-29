@@ -5,6 +5,7 @@ import { createDecisionClient } from "../src/decision/client";
 import { decisionConfigFromEnvironment } from "../src/decision/config";
 import {
   DeciderInferenceEngine,
+  type DecisionQuestion,
   type TrainedWeights,
 } from "../src/decision/inference";
 
@@ -125,7 +126,7 @@ describe("Trained OpenDecider & Laya Models", () => {
       fetch: async (request) => {
         const body = (await request.json()) as {
           state: unknown;
-          questions: Record<string, any>;
+          questions: Record<string, DecisionQuestion>;
         };
         const answers = engine.predict(body.state, body.questions);
         return Response.json({ answers });

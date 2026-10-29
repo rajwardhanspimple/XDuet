@@ -33,7 +33,7 @@ afterAll(async () => {
 
 describe("Cold crash recovery across server restarts", () => {
   test("pending approvals survive cold crash and remain pending for user decision", async () => {
-    const threadId = randomUUID();
+    const _threadId = randomUUID();
     const runId = randomUUID();
     const toolCallId = `tool-${randomUUID()}`;
     const approvalId = `approval-${randomUUID()}`;

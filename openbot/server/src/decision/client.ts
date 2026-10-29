@@ -28,7 +28,7 @@ function getWeightsPath(config: DecisionConfig): string {
   return candidates[0];
 }
 
-function isInProcessAvailable(config: DecisionConfig): boolean {
+function _isInProcessAvailable(config: DecisionConfig): boolean {
   try {
     return existsSync(getWeightsPath(config));
   } catch {

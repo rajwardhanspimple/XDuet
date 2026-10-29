@@ -324,7 +324,7 @@ async function main() {
 
         if (attempt < maxRetries && isRateLimit) {
           results["Mercury Decide (API)"].retries += 1;
-          const backoffMs = 2000 * Math.pow(1.5, attempt);
+          const backoffMs = 2000 * 1.5 ** attempt;
           await new Promise((r) => setTimeout(r, backoffMs));
           continue;
         }

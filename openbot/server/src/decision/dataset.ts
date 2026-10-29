@@ -21,7 +21,7 @@ export async function logDecisionDataset(
 ): Promise<void> {
   try {
     await mkdir(dirname(filePath), { recursive: true });
-    const line = JSON.stringify(entry) + "\n";
+    const line = `${JSON.stringify(entry)}\n`;
     await appendFile(filePath, line, "utf8");
   } catch (error) {
     console.error(

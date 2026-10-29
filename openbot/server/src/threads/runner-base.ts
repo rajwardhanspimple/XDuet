@@ -41,7 +41,7 @@ export interface LocalThreadEndpointRecord {
 export abstract class AgentRunner {
   abstract run(request: AgentRunnerRunRequest): Observable<BaseEvent>;
   abstract connect(request: AgentRunnerConnectRequest): Observable<BaseEvent>;
-  abstract stop(request: AgentRunnerStopRequest): Promise<boolean | void>;
+  abstract stop(request: AgentRunnerStopRequest): Promise<boolean | undefined>;
   abstract isRunning(request: AgentRunnerIsRunningRequest): Promise<boolean>;
   abstract listThreads(): LocalThreadEndpointRecord[];
   getThread?(threadId: string): LocalThreadEndpointRecord | null;

@@ -4,6 +4,7 @@ import { createNativeCopilotRouter } from "../src/copilot/native-router";
 import type { AgentRunner } from "../src/threads/runner-base";
 import { Observable } from "rxjs";
 import { EventType } from "@ag-ui/core";
+import type { Message } from "@ag-ui/client";
 
 describe("Native CopilotKit Router", () => {
   const mockRunner: AgentRunner = {
@@ -43,7 +44,7 @@ describe("Native CopilotKit Router", () => {
         sub.complete();
       });
     },
-    connect: (req) => {
+    connect: (_req) => {
       return new Observable((sub) => {
         sub.next({
           type: EventType.MESSAGES_SNAPSHOT,
@@ -69,10 +70,11 @@ describe("Native CopilotKit Router", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as Message,
     ],
   };
 
+  // biome-ignore lint/suspicious/noExplicitAny: test mock resolver
   const mockResolver: any = {
     resolveAgentsForActor: async () => ({
       default: {
@@ -80,6 +82,7 @@ describe("Native CopilotKit Router", () => {
         description: "Test Assistant",
       },
     }),
+    // biome-ignore lint/suspicious/noExplicitAny: test mock resolver
     resolveAgentForActor: async (_actor: any, agentId: string) => {
       if (agentId === "unknown") return null;
       return {
@@ -89,6 +92,7 @@ describe("Native CopilotKit Router", () => {
     },
   };
 
+  // biome-ignore lint/suspicious/noExplicitAny: test mock actor
   const mockIdentifyActor: any = async () => ({
     id: "user_test",
     role: "user",

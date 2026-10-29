@@ -12,7 +12,8 @@
       "!desktop/src-tauri/gen",
       "!**/target",
       "!server/drizzle",
-      "!server/tests/fixtures/arcade-catalogue.json"
+      "!server/tests/fixtures/arcade-catalogue.json",
+      "!models"
     ]
   },
   "formatter": {
@@ -36,6 +37,12 @@
             "noNonNullAssertion": "off"
           }
         }
+      }
+    },
+    {
+      "includes": ["scripts/**"],
+      "linter": {
+        "enabled": false
       }
     },
     {

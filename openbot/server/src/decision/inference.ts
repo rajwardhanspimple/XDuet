@@ -1,11 +1,12 @@
 import type {
   ChoiceAnswer,
-  DecisionAnswer,
   DecisionAnswers,
   DecisionQuestion,
   NoulAnswer,
   ScoreAnswer,
 } from "./types";
+
+export type { DecisionQuestion };
 
 export type TrainedWeights = {
   modelName: string;
@@ -137,7 +138,7 @@ export class DeciderInferenceEngine {
     if (qid === "needs_you" || qid === "urgent" || qid === "action_needed") {
       const stateObj =
         typeof state === "object" && state !== null
-          ? (state as Record<string, any>)
+          ? (state as Record<string, unknown>)
           : {};
       const subj = String(stateObj.subject ?? "");
       const body = String(stateObj.body ?? "");
@@ -185,7 +186,7 @@ export class DeciderInferenceEngine {
 
       const headers =
         typeof stateObj.headers === "object" && stateObj.headers !== null
-          ? stateObj.headers
+          ? (stateObj.headers as Record<string, unknown>)
           : {};
       const headerLabels = String(
         headers["X-Gmail-Labels"] ?? headers["x-gmail-labels"] ?? "",
@@ -577,15 +578,15 @@ export class DeciderInferenceEngine {
         stateLower.includes("grep -rn") ||
         stateLower.includes("grep ")
       ) {
-        rawScores["proceed"] = Math.max(
-          (rawScores["proceed"] ?? 0) + 14.0,
-          (rawScores["needs_approval"] ?? 0) + 5.0,
+        rawScores.proceed = Math.max(
+          (rawScores.proceed ?? 0) + 14.0,
+          (rawScores.needs_approval ?? 0) + 5.0,
         );
       }
 
       // Benign git branch checkout navigation (local branch only, not chained with commit/push)
       if (
-        /\bgit checkout\s+[a-zA-Z0-9_\-\/]+\b/i.test(stateLower) &&
+        /\bgit checkout\s+[a-zA-Z0-9_\-/]+\b/i.test(stateLower) &&
         !stateLower.includes("git checkout --") &&
         !stateLower.includes("git checkout .") &&
         !stateLower.includes("-f") &&
@@ -593,9 +594,9 @@ export class DeciderInferenceEngine {
         !stateLower.includes("git push") &&
         !stateLower.includes("git commit")
       ) {
-        rawScores["proceed"] = Math.max(
-          (rawScores["proceed"] ?? 0) + 24.0,
-          (rawScores["needs_approval"] ?? 0) + 6.0,
+        rawScores.proceed = Math.max(
+          (rawScores.proceed ?? 0) + 24.0,
+          (rawScores.needs_approval ?? 0) + 6.0,
         );
       }
 
@@ -658,12 +659,12 @@ export class DeciderInferenceEngine {
         stateLower.includes("resolv.conf") ||
         stateLower.includes("git clean")
       ) {
-        rawScores["needs_approval"] = Math.max(
-          (rawScores["needs_approval"] ?? 0) + 14.0,
-          (rawScores["hand_off"] ?? 0) + 5.0,
-          (rawScores["proceed"] ?? 0) + 6.0,
+        rawScores.needs_approval = Math.max(
+          (rawScores.needs_approval ?? 0) + 14.0,
+          (rawScores.hand_off ?? 0) + 5.0,
+          (rawScores.proceed ?? 0) + 6.0,
         );
-        rawScores["proceed"] = Math.min(rawScores["proceed"] ?? 0, -5.0);
+        rawScores.proceed = Math.min(rawScores.proceed ?? 0, -5.0);
       }
 
       if (
@@ -672,9 +673,9 @@ export class DeciderInferenceEngine {
         stateLower.includes(">> ~/.") ||
         stateLower.includes(".bashrc")
       ) {
-        rawScores["needs_approval"] = Math.max(
-          (rawScores["needs_approval"] ?? 0) + 12.0,
-          (rawScores["hand_off"] ?? 0) + 5.0,
+        rawScores.needs_approval = Math.max(
+          (rawScores.needs_approval ?? 0) + 12.0,
+          (rawScores.hand_off ?? 0) + 5.0,
         );
       }
 
@@ -695,15 +696,15 @@ export class DeciderInferenceEngine {
         stateLower.includes("root key") ||
         stateLower.includes("billing.add_funds")
       ) {
-        rawScores["hand_off"] = Math.max(
-          (rawScores["hand_off"] ?? 0) + 20.0,
-          (rawScores["needs_approval"] ?? 0) + 6.0,
+        rawScores.hand_off = Math.max(
+          (rawScores.hand_off ?? 0) + 20.0,
+          (rawScores.needs_approval ?? 0) + 6.0,
         );
-        rawScores["needs_approval"] = Math.min(
-          rawScores["needs_approval"] ?? 0,
+        rawScores.needs_approval = Math.min(
+          rawScores.needs_approval ?? 0,
           -2.0,
         );
-        rawScores["proceed"] = Math.min(rawScores["proceed"] ?? 0, -5.0);
+        rawScores.proceed = Math.min(rawScores.proceed ?? 0, -5.0);
       }
 
       const probs = softmax(rawScores);
@@ -725,7 +726,7 @@ export class DeciderInferenceEngine {
 
     // 2. Safety category choice: none / credentials / security_settings / payments
     if (qid === "safety" && criteriaKeys.includes("credentials")) {
-      rawScores["none"] = 1.0;
+      rawScores.none = 1.0;
       for (const [cat, words] of Object.entries(
         this.weights.safetyWeights.categories ?? {},
       )) {
@@ -782,15 +783,15 @@ export class DeciderInferenceEngine {
         ) &&
         !/\b(typeerror|exception|debug|syntax error)\b/i.test(stateLower)
       ) {
-        rawScores["billing"] = (rawScores["billing"] ?? 0) + 8.0;
+        rawScores.billing = (rawScores.billing ?? 0) + 8.0;
       }
       if (
         /\b(nginx|keepalive|access logs|504 gateway|alerting rules|pagerduty|escalation policies|kubernetes cluster|soc2|compliance audit|access control policies|cgroup|docker daemon|root cause analysis|\brca\b|database failover|failover and failback)\b/i.test(
           stateLower,
         )
       ) {
-        rawScores["ops"] = (rawScores["ops"] ?? 0) + 16.0;
-        rawScores["writer"] = Math.min(rawScores["writer"] ?? 0, -5.0);
+        rawScores.ops = (rawScores.ops ?? 0) + 16.0;
+        rawScores.writer = Math.min(rawScores.writer ?? 0, -5.0);
       }
       if (
         /\b(customer-facing post-mortem|status page summary|release notes|blog post|customer documentation|user documentation|investor update)\b/i.test(
@@ -800,7 +801,7 @@ export class DeciderInferenceEngine {
           stateLower,
         )
       ) {
-        rawScores["writer"] = (rawScores["writer"] ?? 0) + 16.0;
+        rawScores.writer = (rawScores.writer ?? 0) + 16.0;
       }
       if (
         /\b(user research|qualitative|interview transcripts?|customer interviews?|conduct.*interviews|churn.*drivers|account churn|churned customers|literature|architectural.*comparison|trade-offs.*benchmarks)\b/i.test(
@@ -808,16 +809,16 @@ export class DeciderInferenceEngine {
         ) &&
         !/\b(typeerror|flexbox|sql migration)\b/i.test(stateLower)
       ) {
-        rawScores["researcher"] = (rawScores["researcher"] ?? 0) + 18.0;
-        rawScores["triage"] = Math.min(rawScores["triage"] ?? 0, -5.0);
+        rawScores.researcher = (rawScores.researcher ?? 0) + 18.0;
+        rawScores.triage = Math.min(rawScores.triage ?? 0, -5.0);
       }
       if (
         /\b(native heap|memory leak|c\+\+|addon|flexbox|typeerror|uncaught|sql migration|docker compose up|unit tests?|api integration|write.*api|in typescript|in python|in rust|in go)\b/i.test(
           stateLower,
         )
       ) {
-        rawScores["coder"] = (rawScores["coder"] ?? 0) + 18.0;
-        rawScores["writer"] = Math.min(rawScores["writer"] ?? 0, -5.0);
+        rawScores.coder = (rawScores.coder ?? 0) + 18.0;
+        rawScores.writer = Math.min(rawScores.writer ?? 0, -5.0);
       }
     } else {
       for (const key of criteriaKeys) {
@@ -855,7 +856,7 @@ export class DeciderInferenceEngine {
             score += 1.0;
           } else if (dt.endsWith("s") && tokens.has(dt.slice(0, -1))) {
             score += 1.0;
-          } else if (tokens.has(dt + "s")) {
+          } else if (tokens.has(`${dt}s`)) {
             score += 1.0;
           }
         }

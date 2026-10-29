@@ -9,12 +9,12 @@ import {
   type AgentRunner,
   CopilotKitIntelligence,
   CopilotRuntime,
-  CopilotSseRuntime,
   InMemoryAgentRunner,
   supportsLocalThreadEndpoints,
 } from "@copilotkit/runtime/v2";
 import { createCopilotHonoHandler } from "@copilotkit/runtime/v2/hono";
 import { createNativeCopilotRouter } from "./copilot/native-router";
+import type { AgentRunner as LocalAgentRunner } from "./threads/runner-base";
 import { PROVENANCE_GUIDANCE } from "@openbot/shared/bot-prompt";
 import { defaultModelFor } from "@openbot/shared/model-providers";
 import {
@@ -2011,7 +2011,7 @@ function mountLocalCopilotRuntime(
   };
 
   const handler = createNativeCopilotRouter({
-    runner: runner as any,
+    runner: runner as unknown as LocalAgentRunner,
     resolver,
     identifyActor,
     generativeUiEnabled: config.generativeUi,

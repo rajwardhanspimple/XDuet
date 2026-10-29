@@ -46,7 +46,7 @@ function resolveLogPath(customPath?: string): string {
  */
 export function detectDecisionDomain(
   questions: Record<string, DecisionQuestion>,
-  state: unknown,
+  _state: unknown,
 ): string {
   const qKeys = Object.keys(questions);
   if (qKeys.includes("needs_you")) return "triage";
@@ -111,7 +111,7 @@ export async function recordDecisionAudit(
 
   try {
     await mkdir(dirname(filePath), { recursive: true });
-    await appendFile(filePath, JSON.stringify(auditEntry) + "\n", "utf8");
+    await appendFile(filePath, `${JSON.stringify(auditEntry)}\n`, "utf8");
   } catch (error) {
     console.error(
       JSON.stringify({
@@ -192,7 +192,7 @@ export async function updateDecisionSupervision(
   if (update.correctedAnswers !== undefined)
     target.supervision.correctedAnswers = update.correctedAnswers;
 
-  const content = entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
+  const content = `${entries.map((e) => JSON.stringify(e)).join("\n")}\n`;
   await writeFile(filePath, content, "utf8");
   return target;
 }

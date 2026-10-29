@@ -6,6 +6,12 @@ export interface FinalizeRunOptions {
   interruptionMessage?: string;
 }
 
+interface ToolCallEventLike {
+  toolCallId?: string;
+  toolCallName?: string;
+  parentMessageId?: string;
+}
+
 /**
  * Scans an event buffer upon turn conclusion/interruption and synthesizes closing
  * tool call events for any pending or hanging tool invocations.
@@ -21,16 +27,17 @@ export function finalizeRunEvents(
   >();
 
   for (const event of events) {
-    if (event.type === "TOOL_CALL_START") {
-      openToolCalls.set((event as any).toolCallId, {
-        name: (event as any).toolCallName,
-        messageId: (event as any).parentMessageId,
+    const ev = event as unknown as ToolCallEventLike;
+    if (event.type === "TOOL_CALL_START" && ev.toolCallId) {
+      openToolCalls.set(ev.toolCallId, {
+        name: ev.toolCallName,
+        messageId: ev.parentMessageId,
       });
     } else if (
-      event.type === "TOOL_CALL_END" ||
-      event.type === "TOOL_CALL_RESULT"
+      (event.type === "TOOL_CALL_END" || event.type === "TOOL_CALL_RESULT") &&
+      ev.toolCallId
     ) {
-      openToolCalls.delete((event as any).toolCallId);
+      openToolCalls.delete(ev.toolCallId);
     }
   }
 
