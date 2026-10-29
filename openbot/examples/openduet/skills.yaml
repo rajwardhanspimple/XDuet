@@ -88,6 +88,13 @@ skills:
       - "@research/search"
       - "@research/fetch"
 
+  - slug: browse-web
+    title: Browse the web
+    summary: Open a web page in your browser and read its content.
+    instructions: >-
+      When asked to open a browser, look at a website, check an online page, or read Wikipedia, call
+      computer_navigate with the full URL (such as https://en.wikipedia.org/wiki/<Topic>) and read the returned text.
+
   - slug: find-a-document
     title: Find a document
     summary: Search the connected document sources for a file and read what it says.

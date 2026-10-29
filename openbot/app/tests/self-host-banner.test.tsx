@@ -44,13 +44,17 @@ beforeEach(() => {
     { preconnect: originalFetch.preconnect },
   );
 });
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   for (const client of clients) client.clear();
   clients.length = 0;
   globalThis.fetch = originalFetch;
+  await new Promise((resolve) => setTimeout(resolve, 50));
 });
-afterAll(() => GlobalRegistrator.unregister());
+afterAll(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  GlobalRegistrator.unregister();
+});
 
 const banner = { name: "Self-host OpenDuet" } as const;
 

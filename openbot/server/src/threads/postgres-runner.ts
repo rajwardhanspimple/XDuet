@@ -231,10 +231,11 @@ export class PostgresAgentRunner extends AgentRunner {
     userId: string;
     agentId: string;
   }): Promise<void> {
+    const threadId = input.threadId || crypto.randomUUID();
     await this.database
       .insert(agentThreads)
       .values({
-        id: input.threadId,
+        id: threadId,
         userId: input.userId,
         agentId: input.agentId,
       })
@@ -401,24 +402,25 @@ export class PostgresAgentRunner extends AgentRunner {
     live: LiveRun,
   ): Promise<void> {
     try {
+      const threadId = request.threadId || crypto.randomUUID();
       await this.ensureThread({
-        threadId: request.threadId,
+        threadId,
         userId: DEFAULT_OWNER,
         agentId: request.agent.agentId ?? "default",
       });
       const acquired = await this.acquireThreadLock({
-        threadId: request.threadId,
+        threadId,
         runId: live.runId,
         userId: DEFAULT_OWNER,
         agentId: request.agent.agentId ?? "default",
       });
       if (!acquired) throw new Error("Thread already running");
 
-      const previous = this.cache.get(request.threadId);
+      const previous = this.cache.get(threadId);
       const parentRunId = previous?.runIds.at(-1) ?? null;
       await this.database.insert(agentThreadRuns).values({
         id: live.runId,
-        threadId: request.threadId,
+        threadId,
         agentId: request.agent.agentId ?? "default",
         parentRunId,
         status: RUNNING,

@@ -151,6 +151,9 @@ export function createNativeCopilotRouter(options: NativeRouterOptions): Hono {
     if (!rawBody.runId) {
       rawBody.runId = crypto.randomUUID();
     }
+    if (!rawBody.threadId) {
+      rawBody.threadId = crypto.randomUUID();
+    }
     const actor = await options.identifyActor(c.req.raw);
     const agent = await options.resolver.resolveAgentForActor(actor, agentId);
 

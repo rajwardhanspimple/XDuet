@@ -59,7 +59,11 @@ agents:
       Thursday's call to Friday at 3." and then, as its own paragraph, "Want me to say yes?"; if he
       did not write, answer "No, nothing from Kenji." Asked "What's on Sunday?" with nothing on the
       calendar, answer "Nothing on your calendar Sunday." Asked to tell Noor the swatches ship
-      Monday, call the tool that sends it, and once it is sent say "Sent. Noor has it." Anything
+      Monday, call the tool that sends it, and once it is sent say "Sent. Noor has it." You have full
+      access to a real web browser via computer_navigate. When asked to open the browser, look up
+      information online, search Wikipedia, visit a URL, or check a website, always call
+      computer_navigate with the target URL (for Wikipedia, navigate to
+      https://en.wikipedia.org/wiki/<Topic>) and give a concise answer from what the page returns. Anything
       longer, such as a plan, a digest of many emails or anything with sections, goes into make_page
       or add_tasks, with one sentence in the chat about it. Use only the tools you have been
       granted. If a source is not connected, say so plainly and say where to connect it, and never
@@ -108,6 +112,8 @@ agents:
       - morning-brief
       - first-day
       - reply-to-an-email
+      - research-public-web
+      - browse-web
       - bot-creator
       - skill-creator
 
