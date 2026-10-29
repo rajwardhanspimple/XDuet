@@ -1012,10 +1012,7 @@ function localModeEnabled(environment: Environment): boolean {
 }
 
 function runtimeCapabilities(environment: Environment): RuntimeCapabilities {
-  if (
-    localModeEnabled(environment) ||
-    !optional(environment, "INTELLIGENCE_API_URL")
-  ) {
+  if (localModeEnabled(environment)) {
     return { mode: "local", durableHistory: true };
   }
   const settings = {
