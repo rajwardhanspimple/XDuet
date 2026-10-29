@@ -7,7 +7,7 @@ import {
 import {
   BuiltInAgent,
   type BuiltInAgentConfiguration,
-} from "../agents/builtin";
+} from "@copilotkit/runtime/v2";
 
 /** Stub for CopilotKitIntelligence so callers do not depend on @copilotkit/runtime */
 export class CopilotKitIntelligence {

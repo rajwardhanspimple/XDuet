@@ -135,6 +135,9 @@ export function createNativeCopilotRouter(options: NativeRouterOptions): Hono {
   router.post("/agent/:agentId/run", async (c) => {
     const agentId = decodeURIComponent(c.req.param("agentId"));
     const rawBody = await c.req.json();
+    if (!rawBody.runId) {
+      rawBody.runId = crypto.randomUUID();
+    }
     const actor = await options.identifyActor(c.req.raw);
     const agent = await options.resolver.resolveAgentForActor(actor, agentId);
 

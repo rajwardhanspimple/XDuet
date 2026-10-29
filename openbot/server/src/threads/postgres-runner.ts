@@ -244,18 +244,19 @@ export class PostgresAgentRunner extends AgentRunner {
   /** Acquire the per-thread lease used by headless turns and the runner itself. */
   async acquireThreadLock(input: {
     threadId: string;
-    runId: string;
+    runId?: string;
     userId: string;
     agentId: string;
     ttlMs?: number;
   }): Promise<boolean> {
     await this.ensureThread(input);
+    const runId = input.runId || crypto.randomUUID();
     const ttl = input.ttlMs ?? LOCK_TTL_MS;
     const rows = await this.database.execute(sql`
       INSERT INTO agent_thread_locks
         (thread_id, run_id, owner, expires_at, heartbeat_at)
       VALUES (
-        ${input.threadId}, ${input.runId}, ${this.owner},
+        ${input.threadId}, ${runId}, ${this.owner},
         now() + (${ttl} * interval '1 millisecond'), now()
       )
       ON CONFLICT (thread_id) DO UPDATE SET
@@ -308,9 +309,10 @@ export class PostgresAgentRunner extends AgentRunner {
     if (this.live.has(request.threadId)) {
       throw new Error("Thread already running");
     }
+    const runId = request.input.runId || crypto.randomUUID();
     const live: LiveRun = {
       threadId: request.threadId,
-      runId: request.input.runId,
+      runId,
       agent: request.agent,
       subject: new ReplaySubject<BaseEvent>(Infinity),
       currentEvents: [],
