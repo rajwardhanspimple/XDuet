@@ -10,8 +10,7 @@ import { appConfig } from "@/lib/generated/application-config";
 import { cn } from "@/lib/utils";
 
 /** XDuet repository and documentation URL. */
-export const SELF_HOST_URL =
-  "https://github.com/rajwardhanspimple/XDuet";
+export const SELF_HOST_URL = "https://github.com/rajwardhanspimple/XDuet";
 
 /**
  * A slim bar offering help self-hosting this product, until this person closes it.

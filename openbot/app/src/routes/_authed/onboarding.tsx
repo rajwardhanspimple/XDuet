@@ -328,7 +328,8 @@ function LocalStep() {
       </h1>
       <p className="mt-3 max-w-md text-center text-muted-foreground">
         Your Bots, settings, durable threads, and memory stay in this install's
-        local database. Zero telemetry is sent to any external service. What you ask goes directly to your configured AI model.
+        local database. Zero telemetry is sent to any external service. What you
+        ask goes directly to your configured AI model.
       </p>
       <div className="h-8" />
       <CapabilityDemo kind="approval" />

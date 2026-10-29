@@ -14,7 +14,9 @@ import type {
 } from "./types";
 
 function getWeightsPath(config: DecisionConfig): string {
-  const modelDir = config.model.toLowerCase().includes("laya") ? "laya" : "opendecider-nano";
+  const modelDir = config.model.toLowerCase().includes("laya")
+    ? "laya"
+    : "opendecider-nano";
   const candidates = [
     join(import.meta.dir, "..", "..", "..", "models", modelDir, "weights.json"),
     join(process.cwd(), "models", modelDir, "weights.json"),
@@ -65,7 +67,9 @@ class InProcessDecisionClient implements DecisionClient {
     this.provider = config.provider;
     this.model = config.model;
     const weightsPath = getWeightsPath(config);
-    const weights: TrainedWeights = JSON.parse(readFileSync(weightsPath, "utf8"));
+    const weights: TrainedWeights = JSON.parse(
+      readFileSync(weightsPath, "utf8"),
+    );
     this.engine = new DeciderInferenceEngine(weights);
   }
 

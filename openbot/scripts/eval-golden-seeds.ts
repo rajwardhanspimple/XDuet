@@ -1,12 +1,18 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DeciderInferenceEngine, type TrainedWeights } from "../server/src/decision/inference";
+import {
+  DeciderInferenceEngine,
+  type TrainedWeights,
+} from "../server/src/decision/inference";
 
 async function main() {
   const root = join(import.meta.dir, "..");
   const weights: TrainedWeights = JSON.parse(
-    await readFile(join(root, "models", "opendecider-nano", "weights.json"), "utf8"),
+    await readFile(
+      join(root, "models", "opendecider-nano", "weights.json"),
+      "utf8",
+    ),
   );
   const engine = new DeciderInferenceEngine(weights);
 
@@ -50,18 +56,32 @@ async function main() {
       correct += 1;
       domainStats[d].correct += 1;
     } else {
-      console.log(`[MISMATCH] ${s.id} (${s.domain}): expected`, s.answers, "got", pred);
+      console.log(
+        `[MISMATCH] ${s.id} (${s.domain}): expected`,
+        s.answers,
+        "got",
+        pred,
+      );
     }
   }
 
-  console.log(`\n================================================================================`);
-  console.log(`EVALUATION ON ALL ${samples.length} ADVERSARIAL GOLDEN SEED SAMPLES`);
-  console.log(`================================================================================`);
-  console.log(`Overall: ${correct} / ${samples.length} (${((correct / samples.length) * 100).toFixed(2)}%)\n`);
+  console.log(
+    `\n================================================================================`,
+  );
+  console.log(
+    `EVALUATION ON ALL ${samples.length} ADVERSARIAL GOLDEN SEED SAMPLES`,
+  );
+  console.log(
+    `================================================================================`,
+  );
+  console.log(
+    `Overall: ${correct} / ${samples.length} (${((correct / samples.length) * 100).toFixed(2)}%)\n`,
+  );
   for (const [d, st] of Object.entries(domainStats)) {
-    console.log(`  - ${d}: ${st.correct} / ${st.total} (${((st.correct / st.total) * 100).toFixed(2)}%)`);
+    console.log(
+      `  - ${d}: ${st.correct} / ${st.total} (${((st.correct / st.total) * 100).toFixed(2)}%)`,
+    );
   }
 }
 
 void main();
-

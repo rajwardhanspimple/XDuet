@@ -181,7 +181,7 @@ async def _run_answer_with_httpx2_capture(monkeypatch, response_json, messages=N
         captured.append(
             {
                 "url": str(request.url),
-                "headers": dict(request.headers),
+                "headers": {k.lower(): v for k, v in request.headers.items()},
                 "body": json.loads(request.content.decode()),
             }
         )

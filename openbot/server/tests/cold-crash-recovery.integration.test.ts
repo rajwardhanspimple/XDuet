@@ -24,7 +24,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await database.delete(approvalRequests).where(eq(approvalRequests.ownerUserId, userId));
+  await database
+    .delete(approvalRequests)
+    .where(eq(approvalRequests.ownerUserId, userId));
   await database.delete(agentThreads).where(eq(agentThreads.userId, userId));
   await database.delete(users).where(eq(users.id, userId));
 });
@@ -141,4 +143,3 @@ describe("Cold crash recovery across server restarts", () => {
     await database.delete(workItems).where(eq(workItems.key, itemKey));
   });
 });
-

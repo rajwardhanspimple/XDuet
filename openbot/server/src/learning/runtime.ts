@@ -263,4 +263,6 @@ export function createLocalLearningRuntime(options: {
   };
 }
 
-export type LearningRuntime = ReturnType<typeof createLearningRuntime> | ReturnType<typeof createLocalLearningRuntime>;
+export type LearningRuntime =
+  | ReturnType<typeof createLearningRuntime>
+  | ReturnType<typeof createLocalLearningRuntime>;

@@ -387,7 +387,8 @@ function scanTs(): Scanned[] {
     if (!existsSync(full)) continue;
     for (const file of sourceFiles(full, [".ts", ".tsx"])) {
       const normalizedFile = file.replace(/\\/g, "/");
-      if (!isSource(file) || normalizedFile.includes("/node_modules/")) continue;
+      if (!isSource(file) || normalizedFile.includes("/node_modules/"))
+        continue;
       const code = stripComments(readFileSync(file, "utf8"));
       out.push({
         path: normalizedFile.slice(REPO.length + 1),

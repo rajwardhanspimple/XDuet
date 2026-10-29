@@ -17,8 +17,14 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createDecisionClient } from "../server/src/decision/client";
 import { decisionConfigFromEnvironment } from "../server/src/decision/config";
-import { DeciderInferenceEngine, type TrainedWeights } from "../server/src/decision/inference";
-import type { DecisionAnswers, DecisionQuestion } from "../server/src/decision/types";
+import {
+  DeciderInferenceEngine,
+  type TrainedWeights,
+} from "../server/src/decision/inference";
+import type {
+  DecisionAnswers,
+  DecisionQuestion,
+} from "../server/src/decision/types";
 
 interface BenchmarkSample {
   id: string;
@@ -58,7 +64,7 @@ function initEngineResult(): EngineResult {
 
 function evaluatePrediction(
   pred: DecisionAnswers,
-  expectedAnswers: Record<string, any>
+  expectedAnswers: Record<string, any>,
 ): boolean {
   for (const [qid, exp] of Object.entries(expectedAnswers)) {
     const act = pred[qid];
@@ -67,7 +73,8 @@ function evaluatePrediction(
     if (exp.type === "noul") {
       const actProb = (act as { noul: number })?.noul ?? 0;
       const actBinary = actProb >= 0.5 ? 1 : 0;
-      const expBinary = typeof exp.noul === "number" ? (exp.noul >= 0.5 ? 1 : 0) : 0;
+      const expBinary =
+        typeof exp.noul === "number" ? (exp.noul >= 0.5 ? 1 : 0) : 0;
       if (actBinary !== expBinary) return false;
     } else if (exp.type === "choice") {
       const actChoice = (act as { choice: string })?.choice;
@@ -81,7 +88,10 @@ function evaluatePrediction(
 function calculatePercentiles(latencies: number[]) {
   if (latencies.length === 0) return { mean: 0, p50: 0, p90: 0, p99: 0 };
   const sorted = [...latencies].sort((a, b) => a - b);
-  const p = (pct: number) => sorted[Math.min(Math.floor(sorted.length * (pct / 100)), sorted.length - 1)];
+  const p = (pct: number) =>
+    sorted[
+      Math.min(Math.floor(sorted.length * (pct / 100)), sorted.length - 1)
+    ];
   const sum = sorted.reduce((acc, v) => acc + v, 0);
   return {
     mean: Number((sum / sorted.length).toFixed(2)),
@@ -97,7 +107,7 @@ class TokenBucketRateLimiter {
 
   constructor(
     private readonly maxTokens: number,
-    private readonly tokensPerSec: number
+    private readonly tokensPerSec: number,
   ) {
     this.tokens = maxTokens;
   }
@@ -107,7 +117,10 @@ class TokenBucketRateLimiter {
       const now = performance.now();
       const elapsed = (now - this.lastTime) / 1000;
       this.lastTime = now;
-      this.tokens = Math.min(this.maxTokens, this.tokens + elapsed * this.tokensPerSec);
+      this.tokens = Math.min(
+        this.maxTokens,
+        this.tokens + elapsed * this.tokensPerSec,
+      );
 
       if (this.tokens >= 1) {
         this.tokens -= 1;
@@ -123,18 +136,29 @@ class TokenBucketRateLimiter {
 async function main() {
   const root = join(import.meta.dir, "..");
 
-  console.log("================================================================================");
-  console.log("DECIDER BENCHMARK: MERCURY DECIDE vs. OPENDECIDER NANO vs. LAYA");
-  console.log("Rate-Paced for Mercury Limit (1,000 req/min -> target ~720 req/min)");
-  console.log("================================================================================");
+  console.log(
+    "================================================================================",
+  );
+  console.log(
+    "DECIDER BENCHMARK: MERCURY DECIDE vs. OPENDECIDER NANO vs. LAYA",
+  );
+  console.log(
+    "Rate-Paced for Mercury Limit (1,000 req/min -> target ~720 req/min)",
+  );
+  console.log(
+    "================================================================================",
+  );
   console.log("Loading datasets and model weights...");
 
   // 1. Load Local Model Weights
   const nanoWeights: TrainedWeights = JSON.parse(
-    await readFile(join(root, "models", "opendecider-nano", "weights.json"), "utf8")
+    await readFile(
+      join(root, "models", "opendecider-nano", "weights.json"),
+      "utf8",
+    ),
   );
   const layaWeights: TrainedWeights = JSON.parse(
-    await readFile(join(root, "models", "laya", "weights.json"), "utf8")
+    await readFile(join(root, "models", "laya", "weights.json"), "utf8"),
   );
 
   const nanoEngine = new DeciderInferenceEngine(nanoWeights);
@@ -144,15 +168,20 @@ async function main() {
   const mercuryConfig = decisionConfigFromEnvironment({
     DECISION_PROVIDER: "mercury-decide",
     DECISION_BASE_URL: "https://api.inceptionlabs.ai/v1",
-    DECISION_API_KEY: "sk_a6dbd8a8624aaa0d882edbaa6a9be5562edb41cace9432f1b0c75e2f0341dc7e",
+    DECISION_API_KEY:
+      "sk_a6dbd8a8624aaa0d882edbaa6a9be5562edb41cace9432f1b0c75e2f0341dc7e",
     DECISION_MODEL: "mercury-decide",
     DECISION_TIMEOUT_MS: "12000",
   });
-  if (!mercuryConfig) throw new Error("Could not construct Mercury Decide config");
+  if (!mercuryConfig)
+    throw new Error("Could not construct Mercury Decide config");
   const mercuryClient = createDecisionClient(mercuryConfig);
 
   // 3. Load Test Data
-  const goldenRaw = await readFile(join(root, "data", "golden-seeds.jsonl"), "utf8");
+  const goldenRaw = await readFile(
+    join(root, "data", "golden-seeds.jsonl"),
+    "utf8",
+  );
   const goldenSeeds: BenchmarkSample[] = goldenRaw
     .split("\n")
     .filter(Boolean)
@@ -160,7 +189,7 @@ async function main() {
 
   const downloadsRaw = await readFile(
     join(root, "data", "downloads_dataset", "system1_all.jsonl"),
-    "utf8"
+    "utf8",
   );
   const allDownloads: BenchmarkSample[] = downloadsRaw
     .split("\n")
@@ -173,8 +202,8 @@ async function main() {
       row.domain === "email_triage"
         ? "triage"
         : row.domain === "skill_selection"
-        ? "tools"
-        : row.domain;
+          ? "tools"
+          : row.domain;
     domainBuckets[d] = domainBuckets[d] ?? [];
     if (domainBuckets[d].length < 50) {
       domainBuckets[d].push({ ...row, domain: d });
@@ -189,7 +218,9 @@ async function main() {
 
   console.log(`Loaded ${goldenSeeds.length} Adversarial Golden Seeds.`);
   console.log(`Loaded ${generalTestSet.length} General Domain Samples.`);
-  console.log(`Total test instances to evaluate per engine: ${fullTestSet.length}\n`);
+  console.log(
+    `Total test instances to evaluate per engine: ${fullTestSet.length}\n`,
+  );
 
   const results = {
     "Mercury Decide (API)": initEngineResult(),
@@ -201,7 +232,7 @@ async function main() {
     engineName: keyof typeof results,
     sample: BenchmarkSample & { isAdversarial: boolean },
     pred: DecisionAnswers,
-    durationMs: number
+    durationMs: number,
   ) {
     const res = results[engineName];
     res.total += 1;
@@ -238,7 +269,7 @@ async function main() {
     results["OpenDecider Nano (Local)"].latenciesMs
       .reduce((a, b) => a + b, 0)
       .toFixed(1),
-    "ms total CPU time."
+    "ms total CPU time.",
   );
 
   // ---------------------------------------------------------------------------
@@ -253,25 +284,29 @@ async function main() {
   }
   console.log(
     "      Completed in",
-    results["Laya (Local)"].latenciesMs
-      .reduce((a, b) => a + b, 0)
-      .toFixed(1),
-    "ms total CPU time."
+    results["Laya (Local)"].latenciesMs.reduce((a, b) => a + b, 0).toFixed(1),
+    "ms total CPU time.",
   );
 
   // ---------------------------------------------------------------------------
   // Step 3: Benchmark Mercury Decide (Inception Cloud API) with Rate-Limiting & Backoff
   // ---------------------------------------------------------------------------
-  console.log("[3/3] Benchmarking Mercury Decide (Inception Labs Hosted API)...");
-  console.log("      Rate Pacing: 12 requests/second (~720 req/min; ceiling is 1,000 req/min)");
-  console.log("      Concurrency: 4 workers with Token Bucket rate limiter & 429 exponential backoff...");
+  console.log(
+    "[3/3] Benchmarking Mercury Decide (Inception Labs Hosted API)...",
+  );
+  console.log(
+    "      Rate Pacing: 12 requests/second (~720 req/min; ceiling is 1,000 req/min)",
+  );
+  console.log(
+    "      Concurrency: 4 workers with Token Bucket rate limiter & 429 exponential backoff...",
+  );
 
   const rateLimiter = new TokenBucketRateLimiter(6, 12); // Max burst 6, steady 12 req/sec
   let completedMercury = 0;
   const startMercuryTotal = performance.now();
 
   async function executeMercuryWithRetry(
-    sample: BenchmarkSample & { isAdversarial: boolean }
+    sample: BenchmarkSample & { isAdversarial: boolean },
   ) {
     const maxRetries = 4;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -317,10 +352,13 @@ async function main() {
       const idx = sampleIndex++;
       await executeMercuryWithRetry(fullTestSet[idx]);
       completedMercury++;
-      if (completedMercury % 25 === 0 || completedMercury === fullTestSet.length) {
+      if (
+        completedMercury % 25 === 0 ||
+        completedMercury === fullTestSet.length
+      ) {
         const pct = ((completedMercury / fullTestSet.length) * 100).toFixed(0);
         process.stdout.write(
-          `      Progress: ${completedMercury}/${fullTestSet.length} (${pct}%) [Retries: ${results["Mercury Decide (API)"].retries}, Errors: ${results["Mercury Decide (API)"].errors}]...\r`
+          `      Progress: ${completedMercury}/${fullTestSet.length} (${pct}%) [Retries: ${results["Mercury Decide (API)"].retries}, Errors: ${results["Mercury Decide (API)"].errors}]...\r`,
         );
       }
     }
@@ -330,15 +368,19 @@ async function main() {
 
   const totalMercuryDuration = performance.now() - startMercuryTotal;
   console.log(
-    `\n      Finished Mercury Decide in ${(totalMercuryDuration / 1000).toFixed(1)} seconds.`
+    `\n      Finished Mercury Decide in ${(totalMercuryDuration / 1000).toFixed(1)} seconds.`,
   );
 
   // ---------------------------------------------------------------------------
   // Generate Comprehensive Comparison Output
   // ---------------------------------------------------------------------------
-  console.log("\n================================================================================");
+  console.log(
+    "\n================================================================================",
+  );
   console.log("HEAD-TO-HEAD BENCHMARK RESULTS (EXACT MEASURED DATA)");
-  console.log("================================================================================\n");
+  console.log(
+    "================================================================================\n",
+  );
 
   const engines = [
     "Mercury Decide (API)",
@@ -347,26 +389,28 @@ async function main() {
   ] as const;
 
   console.log("1. OVERALL ACCURACY SUMMARY:");
-  console.log("--------------------------------------------------------------------------------");
+  console.log(
+    "--------------------------------------------------------------------------------",
+  );
   console.log(
     "Engine".padEnd(26) +
       "Overall Acc".padEnd(18) +
       "Adversarial Seeds".padEnd(20) +
       "General Test Set".padEnd(18) +
-      "Errors / Retries"
+      "Errors / Retries",
   );
-  console.log("--------------------------------------------------------------------------------");
+  console.log(
+    "--------------------------------------------------------------------------------",
+  );
 
   for (const eng of engines) {
     const r = results[eng];
     const overallPct = `${r.correct}/${r.total} (${((r.correct / r.total) * 100).toFixed(2)}%)`;
     const advPct = `${r.adversarialCorrect}/${r.adversarialTotal} (${(
-      (r.adversarialCorrect / r.adversarialTotal) *
-      100
+      (r.adversarialCorrect / r.adversarialTotal) * 100
     ).toFixed(2)}%)`;
     const genPct = `${r.generalCorrect}/${r.generalTotal} (${(
-      (r.generalCorrect / r.generalTotal) *
-      100
+      (r.generalCorrect / r.generalTotal) * 100
     ).toFixed(2)}%)`;
     const errInfo = `${r.errors} err / ${r.retries} retries`;
     console.log(
@@ -374,18 +418,24 @@ async function main() {
         overallPct.padEnd(18) +
         advPct.padEnd(20) +
         genPct.padEnd(18) +
-        errInfo
+        errInfo,
     );
   }
 
   console.log("\n2. DOMAIN BREAKDOWN ACCURACY:");
-  console.log("--------------------------------------------------------------------------------");
+  console.log(
+    "--------------------------------------------------------------------------------",
+  );
   const allDomains = Array.from(
-    new Set(engines.flatMap((e) => Object.keys(results[e].domainStats)))
+    new Set(engines.flatMap((e) => Object.keys(results[e].domainStats))),
   ).sort();
 
-  console.log("Engine".padEnd(26) + allDomains.map((d) => d.padEnd(14)).join(""));
-  console.log("--------------------------------------------------------------------------------");
+  console.log(
+    "Engine".padEnd(26) + allDomains.map((d) => d.padEnd(14)).join(""),
+  );
+  console.log(
+    "--------------------------------------------------------------------------------",
+  );
   for (const eng of engines) {
     const r = results[eng];
     const domCols = allDomains.map((d) => {
@@ -397,16 +447,20 @@ async function main() {
   }
 
   console.log("\n3. LATENCY PERFORMANCE (MILLISECONDS):");
-  console.log("--------------------------------------------------------------------------------");
+  console.log(
+    "--------------------------------------------------------------------------------",
+  );
   console.log(
     "Engine".padEnd(26) +
       "Mean Latency".padEnd(16) +
       "P50 (Median)".padEnd(16) +
       "P90".padEnd(14) +
       "P99".padEnd(14) +
-      "Throughput"
+      "Throughput",
   );
-  console.log("--------------------------------------------------------------------------------");
+  console.log(
+    "--------------------------------------------------------------------------------",
+  );
   for (const eng of engines) {
     const lat = calculatePercentiles(results[eng].latenciesMs);
     const throughput =
@@ -417,11 +471,13 @@ async function main() {
         `${lat.p50} ms`.padEnd(16) +
         `${lat.p90} ms`.padEnd(14) +
         `${lat.p99} ms`.padEnd(14) +
-        throughput
+        throughput,
     );
   }
 
-  console.log("\n================================================================================");
+  console.log(
+    "\n================================================================================",
+  );
 }
 
 void main();

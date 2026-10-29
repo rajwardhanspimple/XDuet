@@ -17,7 +17,12 @@ type TrainingSample = {
 async function main() {
   const root = join(import.meta.dir, "..");
   const specA4000Path = join(root, "data", "laya_spec_a_4000.jsonl");
-  const downloadsPath = join(root, "data", "downloads_dataset", "system1_all.jsonl");
+  const downloadsPath = join(
+    root,
+    "data",
+    "downloads_dataset",
+    "system1_all.jsonl",
+  );
   const goldenSeedsPath = join(root, "data", "golden-seeds.jsonl");
   const realGmailPath = join(root, "data", "real_gmail", "gmail_triage.jsonl");
 
@@ -32,19 +37,28 @@ async function main() {
     .split("\n")
     .filter(Boolean)
     .map((l) => JSON.parse(l));
-  console.info(`      Loaded ${rawDownloads.length} rows from ${downloadsPath}`);
+  console.info(
+    `      Loaded ${rawDownloads.length} rows from ${downloadsPath}`,
+  );
 
   const rawGolden = (await readFile(goldenSeedsPath, "utf8"))
     .split("\n")
     .filter(Boolean)
     .map((l) => JSON.parse(l));
-  console.info(`      Loaded ${rawGolden.length} adversarial golden seeds from ${goldenSeedsPath}`);
+  console.info(
+    `      Loaded ${rawGolden.length} adversarial golden seeds from ${goldenSeedsPath}`,
+  );
 
   let rawRealGmail: any[] = [];
   try {
     const raw = await readFile(realGmailPath, "utf8");
-    rawRealGmail = raw.split("\n").filter(Boolean).map((l) => JSON.parse(l));
-    console.info(`      Loaded ${rawRealGmail.length} real Gmail triage rows from ${realGmailPath}`);
+    rawRealGmail = raw
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l));
+    console.info(
+      `      Loaded ${rawRealGmail.length} real Gmail triage rows from ${realGmailPath}`,
+    );
   } catch {
     // optional if missing
   }
@@ -53,13 +67,15 @@ async function main() {
     return {
       id: s.id,
       domain:
-        s.domain === "skills" || s.domain === "tools" || s.domain === "skill_selection"
+        s.domain === "skills" ||
+        s.domain === "tools" ||
+        s.domain === "skill_selection"
           ? "tool_selection"
           : s.domain === "coworker"
-          ? "routing"
-          : s.domain === "email_triage"
-          ? "triage"
-          : s.domain,
+            ? "routing"
+            : s.domain === "email_triage"
+              ? "triage"
+              : s.domain,
       state: s.state,
       questions: s.questions,
       answers: s.answers,
@@ -73,12 +89,17 @@ async function main() {
     ...rawRealGmail.map(toSample),
   ];
 
-  console.info(`[2/5] Compiled unified balanced training corpus across 4 domains...`);
+  console.info(
+    `[2/5] Compiled unified balanced training corpus across 4 domains...`,
+  );
   console.info(`      Total samples: ${dataset.length}`);
-  const domainCounts = dataset.reduce((acc, s) => {
-    acc[s.domain] = (acc[s.domain] ?? 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const domainCounts = dataset.reduce(
+    (acc, s) => {
+      acc[s.domain] = (acc[s.domain] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
   console.info(`      Domain breakdown:`, domainCounts);
 
   // ===========================================================================
@@ -87,7 +108,8 @@ async function main() {
   const triageSamples = dataset.filter((s) => s.domain === "triage");
   const tPosCounts: Record<string, number> = {};
   const tNegCounts: Record<string, number> = {};
-  let numTPos = 0, numTNeg = 0;
+  let numTPos = 0,
+    numTNeg = 0;
 
   function getTriageFeatures(state: any): Set<string> {
     const subj = String(state.subject || "");
@@ -102,16 +124,20 @@ async function main() {
       const vLower = String(v).toLowerCase();
       feats.add(`hdr:${kLower}`);
       feats.add(`hdr:${kLower}=${vLower.slice(0, 25)}`);
-      if (vLower.includes("bulk") || vLower.includes("list")) feats.add("hdr_is_bulk");
-      if (kLower.includes("unsubscribe") || vLower.includes("unsubscribe")) feats.add("hdr_unsubscribe");
-      if (kLower.includes("auto-submitted") && vLower !== "no") feats.add("hdr_auto_submitted");
+      if (vLower.includes("bulk") || vLower.includes("list"))
+        feats.add("hdr_is_bulk");
+      if (kLower.includes("unsubscribe") || vLower.includes("unsubscribe"))
+        feats.add("hdr_unsubscribe");
+      if (kLower.includes("auto-submitted") && vLower !== "no")
+        feats.add("hdr_auto_submitted");
     }
     return feats;
   }
 
   for (const s of triageSamples) {
     const isPos = (s.answers.needs_you?.noul ?? 0) >= 0.5;
-    if (isPos) numTPos++; else numTNeg++;
+    if (isPos) numTPos++;
+    else numTNeg++;
     const feats = getTriageFeatures(s.state);
     for (const f of feats) {
       if (isPos) tPosCounts[f] = (tPosCounts[f] || 0) + 1;
@@ -120,15 +146,66 @@ async function main() {
   }
 
   const triageTokens: Record<string, number> = {};
-  const allTVocab = new Set([...Object.keys(tPosCounts), ...Object.keys(tNegCounts)]);
+  const allTVocab = new Set([
+    ...Object.keys(tPosCounts),
+    ...Object.keys(tNegCounts),
+  ]);
   const alphaT = 0.5;
   const TRIAGE_STOPWORDS = new Set([
-    "the", "and", "in", "of", "to", "a", "an", "is", "for", "on", "with",
-    "as", "by", "at", "from", "be", "or", "that", "this", "it", "are",
-    "was", "were", "what", "its", "our", "your", "my", "have", "has", "had",
-    "do", "does", "did", "can", "could", "will", "would", "shall", "should",
-    "history", "body", "subject", "state", "headers", "latest_message",
-    "notes", "quarter", "quarters", "paragraph", "context", "background", "routine", "earlier",
+    "the",
+    "and",
+    "in",
+    "of",
+    "to",
+    "a",
+    "an",
+    "is",
+    "for",
+    "on",
+    "with",
+    "as",
+    "by",
+    "at",
+    "from",
+    "be",
+    "or",
+    "that",
+    "this",
+    "it",
+    "are",
+    "was",
+    "were",
+    "what",
+    "its",
+    "our",
+    "your",
+    "my",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "can",
+    "could",
+    "will",
+    "would",
+    "shall",
+    "should",
+    "history",
+    "body",
+    "subject",
+    "state",
+    "headers",
+    "latest_message",
+    "notes",
+    "quarter",
+    "quarters",
+    "paragraph",
+    "context",
+    "background",
+    "routine",
+    "earlier",
   ]);
 
   for (const f of allTVocab) {
@@ -236,54 +313,136 @@ async function main() {
   // 2. TOOLS MODEL FITTING
   // ===========================================================================
   const toolSamples = dataset.filter((s) => s.domain === "tool_selection");
-  const skills = ["weather", "calendar", "email", "github", "shell", "computer", "database", "memory"];
-  const toolSkillsConfig: Record<string, { bias: number; negativeKeywords?: string[]; tokens: Record<string, number> }> = {};
+  const skills = [
+    "weather",
+    "calendar",
+    "email",
+    "github",
+    "shell",
+    "computer",
+    "database",
+    "memory",
+  ];
+  const toolSkillsConfig: Record<
+    string,
+    {
+      bias: number;
+      negativeKeywords?: string[];
+      tokens: Record<string, number>;
+    }
+  > = {};
 
   const toolNegativeKeywords: Record<string, string[]> = {
     weather: [
-      "widget", "analytics_events", "postgresql", "query our", "weather_api_timeout",
-      "syslog", "grep", "weather overlay", "browser map", "dom snapshot", "toggle button",
-      "table to count"
+      "widget",
+      "analytics_events",
+      "postgresql",
+      "query our",
+      "weather_api_timeout",
+      "syslog",
+      "grep",
+      "weather overlay",
+      "browser map",
+      "dom snapshot",
+      "toggle button",
+      "table to count",
     ],
     calendar: [
-      "cron_calendar_sync", "bash script", "/var/log", "github pr", "pr fixing",
-      "leap-year bug", "calendarmath", "query the postgres", "calendar_integrations",
-      "oauth refresh", "parse the timestamps", "off-by-one", "rain in", "rain today",
-      "current temperature", "weather forecast"
+      "cron_calendar_sync",
+      "bash script",
+      "/var/log",
+      "github pr",
+      "pr fixing",
+      "leap-year bug",
+      "calendarmath",
+      "query the postgres",
+      "calendar_integrations",
+      "oauth refresh",
+      "parse the timestamps",
+      "off-by-one",
+      "rain in",
+      "rain today",
+      "current temperature",
+      "weather forecast",
     ],
     email: [
-      "unique index", "email_address", "postgres database", "save a note",
-      "user preferences", "email notifications", "github issue", "acme/mailer",
-      "bounced email", "mailer-service", "sns notifications", "index on the"
+      "unique index",
+      "email_address",
+      "postgres database",
+      "save a note",
+      "user preferences",
+      "email notifications",
+      "github issue",
+      "acme/mailer",
+      "bounced email",
+      "mailer-service",
+      "sns notifications",
+      "index on the",
     ],
     github: [
-      "remember that", "preferred github", "code review style", "zero nitpicks",
-      "github_webhook_deliveries", "postgres database", "git config --global",
-      "local shell", "git aliases", "user preferences", "preferred code review"
+      "remember that",
+      "preferred github",
+      "code review style",
+      "zero nitpicks",
+      "github_webhook_deliveries",
+      "postgres database",
+      "git config --global",
+      "local shell",
+      "git aliases",
+      "user preferences",
+      "preferred code review",
     ],
     shell: [
-      "building shell", "facilities team", "calendar invite", "security guidelines",
-      "open the browser", "cloud shell documentation", "documentation page", "copy snippet",
-      "noisy tomorrow", "review our shell"
+      "building shell",
+      "facilities team",
+      "calendar invite",
+      "security guidelines",
+      "open the browser",
+      "cloud shell documentation",
+      "documentation page",
+      "copy snippet",
+      "noisy tomorrow",
+      "review our shell",
     ],
     computer: [
-      "computer ergonomics", "reschedule", "assessment meeting", "laptop computer",
-      "replacement laptop", "it support", "computer_inventory", "table in postgres",
-      "os_version", "when my replacement"
+      "computer ergonomics",
+      "reschedule",
+      "assessment meeting",
+      "laptop computer",
+      "replacement laptop",
+      "it support",
+      "computer_inventory",
+      "table in postgres",
+      "os_version",
+      "when my replacement",
     ],
     database: [
-      "github issue", "repo titled", "vector database client", "remember that",
-      "database maintenance window", "maintenance window", "staging database maintenance"
+      "github issue",
+      "repo titled",
+      "vector database client",
+      "remember that",
+      "database maintenance window",
+      "maintenance window",
+      "staging database maintenance",
     ],
     memory: [
-      "free -m", "vmstat", "swap memory", "linux kernel", "top -o", "%mem",
-      "python worker", "resident memory", "in the terminal to check", "in the shell to see",
-      "swap memory the linux"
+      "free -m",
+      "vmstat",
+      "swap memory",
+      "linux kernel",
+      "top -o",
+      "%mem",
+      "python worker",
+      "resident memory",
+      "in the terminal to check",
+      "in the shell to see",
+      "swap memory the linux",
     ],
   };
 
   for (const sk of skills) {
-    let sPos = 0, sNeg = 0;
+    let sPos = 0,
+      sNeg = 0;
     const posC: Record<string, number> = {};
     const negC: Record<string, number> = {};
     const sVocab = new Set<string>();
@@ -291,7 +450,8 @@ async function main() {
     for (const s of toolSamples) {
       if (s.answers[sk] === undefined) continue;
       const isPos = (s.answers[sk].noul ?? 0) >= 0.5;
-      if (isPos) sPos++; else sNeg++;
+      if (isPos) sPos++;
+      else sNeg++;
       const text = s.state.text || JSON.stringify(s.state);
       const feats = extractFeatures(text);
       for (const f of feats) {
@@ -305,10 +465,46 @@ async function main() {
     const tokens: Record<string, number> = {};
     const alphaS = 0.25;
     const TOOL_STOPWORDS = new Set([
-      "the", "and", "in", "of", "to", "a", "an", "is", "for", "on", "with",
-      "as", "by", "at", "from", "be", "or", "that", "this", "it", "are",
-      "was", "were", "what", "its", "our", "your", "my", "have", "has", "had",
-      "do", "does", "did", "can", "could", "will", "would", "shall", "should",
+      "the",
+      "and",
+      "in",
+      "of",
+      "to",
+      "a",
+      "an",
+      "is",
+      "for",
+      "on",
+      "with",
+      "as",
+      "by",
+      "at",
+      "from",
+      "be",
+      "or",
+      "that",
+      "this",
+      "it",
+      "are",
+      "was",
+      "were",
+      "what",
+      "its",
+      "our",
+      "your",
+      "my",
+      "have",
+      "has",
+      "had",
+      "do",
+      "does",
+      "did",
+      "can",
+      "could",
+      "will",
+      "would",
+      "shall",
+      "should",
     ]);
 
     const CROSS_SKILL_EXCLUSIONS: Record<string, string[]> = {
@@ -318,8 +514,27 @@ async function main() {
       weather: ["database", "github", "shell"],
     };
     const SKILL_AFFIRMATIVE_TERMS: Record<string, string[]> = {
-      database: ["database", "sql", "postgres", "table", "schema", "query", "migration", "relation"],
-      shell: ["shell", "bash", "terminal", "curl", "grep", "cat", "script", "kill", "process"],
+      database: [
+        "database",
+        "sql",
+        "postgres",
+        "table",
+        "schema",
+        "query",
+        "migration",
+        "relation",
+      ],
+      shell: [
+        "shell",
+        "bash",
+        "terminal",
+        "curl",
+        "grep",
+        "cat",
+        "script",
+        "kill",
+        "process",
+      ],
       calendar: ["calendar", "event", "meeting", "schedule"],
       weather: ["weather", "forecast", "temperature", "rain", "sunny", "snow"],
     };
@@ -366,8 +581,16 @@ async function main() {
   // ===========================================================================
   const safetySamples = dataset.filter((s) => s.domain === "safety");
   const safetyClasses = ["proceed", "needs_approval", "hand_off"];
-  const safetyDocCounts: Record<string, number> = { proceed: 0, needs_approval: 0, hand_off: 0 };
-  const safetyWordCounts: Record<string, Record<string, number>> = { proceed: {}, needs_approval: {}, hand_off: {} };
+  const safetyDocCounts: Record<string, number> = {
+    proceed: 0,
+    needs_approval: 0,
+    hand_off: 0,
+  };
+  const safetyWordCounts: Record<string, Record<string, number>> = {
+    proceed: {},
+    needs_approval: {},
+    hand_off: {},
+  };
   const safetyVocab = new Set<string>();
 
   for (const s of safetySamples) {
@@ -382,11 +605,17 @@ async function main() {
   }
 
   const safetyBiases: Record<string, number> = {};
-  const safetyTokensWeights: Record<string, Record<string, number>> = { proceed: {}, needs_approval: {}, hand_off: {} };
+  const safetyTokensWeights: Record<string, Record<string, number>> = {
+    proceed: {},
+    needs_approval: {},
+    hand_off: {},
+  };
   const alphaSaf = 0.5;
 
   for (const c of safetyClasses) {
-    safetyBiases[c] = Number(Math.log(safetyDocCounts[c] / safetySamples.length).toFixed(3));
+    safetyBiases[c] = Number(
+      Math.log(safetyDocCounts[c] / safetySamples.length).toFixed(3),
+    );
     const nC = safetyDocCounts[c];
     const nNotC = safetySamples.length - nC;
 
@@ -423,7 +652,14 @@ async function main() {
   // 4. ROUTING MODEL FITTING
   // ===========================================================================
   const routingSamples = dataset.filter((s) => s.domain === "routing");
-  const routingRoles = ["coder", "researcher", "triage", "billing", "ops", "writer"];
+  const routingRoles = [
+    "coder",
+    "researcher",
+    "triage",
+    "billing",
+    "ops",
+    "writer",
+  ];
   const rDocCounts: Record<string, number> = {};
   const rWordCounts: Record<string, Record<string, number>> = {};
   const rVocab = new Set<string>();
@@ -449,15 +685,59 @@ async function main() {
   const alphaR = 0.5;
 
   const ROUTING_STOPWORDS = new Set([
-    "the", "and", "in", "of", "to", "a", "an", "is", "for", "on", "with",
-    "as", "by", "at", "from", "be", "or", "that", "this", "it", "are",
-    "was", "were", "what", "its", "our", "your", "my", "have", "has", "had",
-    "do", "does", "did", "can", "could", "will", "would", "shall", "should",
-    "all", "are", "any", "text", "state", "message", "our"
+    "the",
+    "and",
+    "in",
+    "of",
+    "to",
+    "a",
+    "an",
+    "is",
+    "for",
+    "on",
+    "with",
+    "as",
+    "by",
+    "at",
+    "from",
+    "be",
+    "or",
+    "that",
+    "this",
+    "it",
+    "are",
+    "was",
+    "were",
+    "what",
+    "its",
+    "our",
+    "your",
+    "my",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "can",
+    "could",
+    "will",
+    "would",
+    "shall",
+    "should",
+    "all",
+    "are",
+    "any",
+    "text",
+    "state",
+    "message",
+    "our",
   ]);
 
   for (const r of routingRoles) {
-    routingBiases[r] = Number(Math.log(rDocCounts[r] / routingSamples.length).toFixed(3));
+    routingBiases[r] = Number(
+      Math.log(rDocCounts[r] / routingSamples.length).toFixed(3),
+    );
     routingTokensWeights[r] = {};
     const nR = rDocCounts[r];
     const nNotR = routingSamples.length - nR;
@@ -546,7 +826,10 @@ async function main() {
     },
   };
 
-  const openDeciderWeights: TrainedWeights = { ...baseWeights, modelName: "opendecider-nano" };
+  const openDeciderWeights: TrainedWeights = {
+    ...baseWeights,
+    modelName: "opendecider-nano",
+  };
   const layaWeights: TrainedWeights = {
     ...baseWeights,
     modelName: "laya",
@@ -558,10 +841,20 @@ async function main() {
   await mkdir(join(modelsDir, "opendecider-nano"), { recursive: true });
   await mkdir(join(modelsDir, "laya"), { recursive: true });
 
-  await writeFile(join(modelsDir, "opendecider-nano", "weights.json"), JSON.stringify(openDeciderWeights, null, 2), "utf8");
-  await writeFile(join(modelsDir, "laya", "weights.json"), JSON.stringify(layaWeights, null, 2), "utf8");
+  await writeFile(
+    join(modelsDir, "opendecider-nano", "weights.json"),
+    JSON.stringify(openDeciderWeights, null, 2),
+    "utf8",
+  );
+  await writeFile(
+    join(modelsDir, "laya", "weights.json"),
+    JSON.stringify(layaWeights, null, 2),
+    "utf8",
+  );
 
-  console.info(`[3/5] Saved weights to models/opendecider-nano/ and models/laya/`);
+  console.info(
+    `[3/5] Saved weights to models/opendecider-nano/ and models/laya/`,
+  );
 
   // Export dataset in SFT and SystemOne formats
   const sftLines: string[] = [];
@@ -580,7 +873,10 @@ async function main() {
       JSON.stringify({
         messages: [
           { role: "system", content: SFT_SYSTEM_PROMPT },
-          { role: "user", content: `<state>\n${stateStr}\n</state>\n\n<questions>\n${qStr}\n</questions>` },
+          {
+            role: "user",
+            content: `<state>\n${stateStr}\n</state>\n\n<questions>\n${qStr}\n</questions>`,
+          },
           { role: "assistant", content: ansStr },
         ],
       }),
@@ -598,17 +894,40 @@ async function main() {
   }
 
   const dataDir = join(root, "data");
-  await writeFile(join(dataDir, "training-corpus.jsonl"), systemOneLines.join("\n") + "\n", "utf8");
-  await writeFile(join(dataDir, "opendecider-sft.jsonl"), sftLines.join("\n") + "\n", "utf8");
-  await writeFile(join(dataDir, "laya-systemone.jsonl"), systemOneLines.join("\n") + "\n", "utf8");
-  console.info(`      Exported ${dataset.length} samples to data/training-corpus.jsonl, data/opendecider-sft.jsonl, and data/laya-systemone.jsonl`);
-  console.info(`[4/5] Running exact validation across all ${dataset.length} samples...`);
+  await writeFile(
+    join(dataDir, "training-corpus.jsonl"),
+    systemOneLines.join("\n") + "\n",
+    "utf8",
+  );
+  await writeFile(
+    join(dataDir, "opendecider-sft.jsonl"),
+    sftLines.join("\n") + "\n",
+    "utf8",
+  );
+  await writeFile(
+    join(dataDir, "laya-systemone.jsonl"),
+    systemOneLines.join("\n") + "\n",
+    "utf8",
+  );
+  console.info(
+    `      Exported ${dataset.length} samples to data/training-corpus.jsonl, data/opendecider-sft.jsonl, and data/laya-systemone.jsonl`,
+  );
+  console.info(
+    `[4/5] Running exact validation across all ${dataset.length} samples...`,
+  );
 
   function evaluate(engine: DeciderInferenceEngine, set: TrainingSample[]) {
     let totalCorrect = 0;
-    const metrics: Record<string, { correct: number; total: number; details?: any }> = {
+    const metrics: Record<
+      string,
+      { correct: number; total: number; details?: any }
+    > = {
       triage: { correct: 0, total: 0, details: { tp: 0, fp: 0, tn: 0, fn: 0 } },
-      tool_selection: { correct: 0, total: 0, details: { skillCorrect: 0, skillTotal: 0 } },
+      tool_selection: {
+        correct: 0,
+        total: 0,
+        details: { skillCorrect: 0, skillTotal: 0 },
+      },
       safety: { correct: 0, total: 0 },
       routing: { correct: 0, total: 0 },
     };
@@ -633,7 +952,7 @@ async function main() {
         for (const [sk, q] of Object.entries(s.questions)) {
           metrics.tool_selection.details.skillTotal++;
           const exp = ((s.answers[sk] as any)?.noul ?? 0) >= 0.5;
-          const act = (((pred[sk] as any)?.noul ?? 0) >= 0.5);
+          const act = ((pred[sk] as any)?.noul ?? 0) >= 0.5;
           if (exp === act) {
             metrics.tool_selection.details.skillCorrect++;
           } else {
@@ -663,11 +982,15 @@ async function main() {
 
     const precision =
       metrics.triage.details.tp + metrics.triage.details.fp > 0
-        ? (metrics.triage.details.tp / (metrics.triage.details.tp + metrics.triage.details.fp)) * 100
+        ? (metrics.triage.details.tp /
+            (metrics.triage.details.tp + metrics.triage.details.fp)) *
+          100
         : 100;
     const recall =
       metrics.triage.details.tp + metrics.triage.details.fn > 0
-        ? (metrics.triage.details.tp / (metrics.triage.details.tp + metrics.triage.details.fn)) * 100
+        ? (metrics.triage.details.tp /
+            (metrics.triage.details.tp + metrics.triage.details.fn)) *
+          100
         : 100;
     const f1 = (2 * precision * recall) / (precision + recall || 1);
 
@@ -688,25 +1011,48 @@ async function main() {
   const resNano = evaluate(engineNano, dataset);
   const resLaya = evaluate(engineLaya, dataset);
 
-  console.info("\n================================================================================");
+  console.info(
+    "\n================================================================================",
+  );
   console.info("EXACT VERIFIED RESULTS (NO APPROXIMATIONS)");
-  console.info("================================================================================\n");
+  console.info(
+    "================================================================================\n",
+  );
 
-  for (const [name, r] of [["OpenDecider Nano", resNano], ["Laya", resLaya]] as const) {
+  for (const [name, r] of [
+    ["OpenDecider Nano", resNano],
+    ["Laya", resLaya],
+  ] as const) {
     console.info(`>>> MODEL: ${name}`);
     console.info(`    Total Dataset Evaluated: ${r.total} samples`);
     console.info(`    Total Correct:           ${r.totalCorrect} / ${r.total}`);
     console.info(`    Overall Accuracy:        ${r.accuracy.toFixed(2)}%\n`);
     console.info(`    Domain Breakdown:`);
-    console.info(`      - Email Triage:        ${((r.metrics.triage.correct / r.metrics.triage.total) * 100).toFixed(2)}% (${r.metrics.triage.correct}/${r.metrics.triage.total} samples)`);
-    console.info(`      - Tool Selection:      ${((r.metrics.tool_selection.correct / r.metrics.tool_selection.total) * 100).toFixed(2)}% (${r.metrics.tool_selection.correct}/${r.metrics.tool_selection.total} samples) [Skills: ${((r.metrics.tool_selection.details.skillCorrect / r.metrics.tool_selection.details.skillTotal) * 100).toFixed(2)}%]`);
-    console.info(`      - Safety Reviews:      ${((r.metrics.safety.correct / r.metrics.safety.total) * 100).toFixed(2)}% (${r.metrics.safety.correct}/${r.metrics.safety.total} samples)`);
-    console.info(`      - Routine Routing:     ${((r.metrics.routing.correct / r.metrics.routing.total) * 100).toFixed(2)}% (${r.metrics.routing.correct}/${r.metrics.routing.total} samples)\n`);
+    console.info(
+      `      - Email Triage:        ${((r.metrics.triage.correct / r.metrics.triage.total) * 100).toFixed(2)}% (${r.metrics.triage.correct}/${r.metrics.triage.total} samples)`,
+    );
+    console.info(
+      `      - Tool Selection:      ${((r.metrics.tool_selection.correct / r.metrics.tool_selection.total) * 100).toFixed(2)}% (${r.metrics.tool_selection.correct}/${r.metrics.tool_selection.total} samples) [Skills: ${((r.metrics.tool_selection.details.skillCorrect / r.metrics.tool_selection.details.skillTotal) * 100).toFixed(2)}%]`,
+    );
+    console.info(
+      `      - Safety Reviews:      ${((r.metrics.safety.correct / r.metrics.safety.total) * 100).toFixed(2)}% (${r.metrics.safety.correct}/${r.metrics.safety.total} samples)`,
+    );
+    console.info(
+      `      - Routine Routing:     ${((r.metrics.routing.correct / r.metrics.routing.total) * 100).toFixed(2)}% (${r.metrics.routing.correct}/${r.metrics.routing.total} samples)\n`,
+    );
     console.info(`    Triage Confusion Matrix:`);
-    console.info(`      - True Positives (TP):  ${r.metrics.triage.details.tp}`);
-    console.info(`      - True Negatives (TN):  ${r.metrics.triage.details.tn}`);
-    console.info(`      - False Positives (FP): ${r.metrics.triage.details.fp}`);
-    console.info(`      - False Negatives (FN): ${r.metrics.triage.details.fn}`);
+    console.info(
+      `      - True Positives (TP):  ${r.metrics.triage.details.tp}`,
+    );
+    console.info(
+      `      - True Negatives (TN):  ${r.metrics.triage.details.tn}`,
+    );
+    console.info(
+      `      - False Positives (FP): ${r.metrics.triage.details.fp}`,
+    );
+    console.info(
+      `      - False Negatives (FN): ${r.metrics.triage.details.fn}`,
+    );
     console.info(`      - Precision:            ${r.precision.toFixed(2)}%`);
     console.info(`      - Recall:               ${r.recall.toFixed(2)}%`);
     console.info(`      - F1 Score:             ${r.f1.toFixed(2)}%\n`);

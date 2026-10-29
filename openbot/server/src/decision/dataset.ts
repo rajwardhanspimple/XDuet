@@ -77,4 +77,3 @@ export function formatEntryForSystemOne(entry: DecisionDatasetEntry): {
     answers: entry.answers,
   };
 }
-

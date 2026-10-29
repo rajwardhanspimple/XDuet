@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 const mode = process.env.SRA009_MODE;
 const targetTest =
   process.env.SRA009_TOOL_SELECTION_TEST_PATH ??
-  fileURLToPath(new URL("./tool-selection.integration.test.ts", import.meta.url));
+  fileURLToPath(
+    new URL("./tool-selection.integration.test.ts", import.meta.url),
+  );
 const modelModulePath =
   process.env.SRA009_MODEL_MODULE_PATH ??
   fileURLToPath(new URL("../src/routing/model.ts", import.meta.url));

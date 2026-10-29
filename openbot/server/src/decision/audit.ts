@@ -23,7 +23,15 @@ export type DecisionAuditEntry = {
   };
 };
 
-const DEFAULT_AUDIT_LOG_PATH = join(import.meta.dir, "..", "..", "..", "data", "decisions", "decision-audit.jsonl");
+const DEFAULT_AUDIT_LOG_PATH = join(
+  import.meta.dir,
+  "..",
+  "..",
+  "..",
+  "data",
+  "decisions",
+  "decision-audit.jsonl",
+);
 
 function resolveLogPath(customPath?: string): string {
   if (!customPath) return DEFAULT_AUDIT_LOG_PATH;
@@ -42,10 +50,25 @@ export function detectDecisionDomain(
 ): string {
   const qKeys = Object.keys(questions);
   if (qKeys.includes("needs_you")) return "triage";
-  if (qKeys.includes("verdict") || qKeys.includes("pre_approved") || qKeys.includes("beyond_request")) return "safety";
+  if (
+    qKeys.includes("verdict") ||
+    qKeys.includes("pre_approved") ||
+    qKeys.includes("beyond_request")
+  )
+    return "safety";
   if (qKeys.includes("coworker")) return "routing";
-  const toolSkills = ["weather", "calendar", "email", "github", "shell", "computer", "database", "memory"];
-  if (qKeys.some((k) => toolSkills.includes(k.replace(/^skill:/, "")))) return "tool_selection";
+  const toolSkills = [
+    "weather",
+    "calendar",
+    "email",
+    "github",
+    "shell",
+    "computer",
+    "database",
+    "memory",
+  ];
+  if (qKeys.some((k) => toolSkills.includes(k.replace(/^skill:/, ""))))
+    return "tool_selection";
   return "other";
 }
 
@@ -54,7 +77,10 @@ export function detectDecisionDomain(
  * Non-blocking, never throws.
  */
 export async function recordDecisionAudit(
-  entry: Omit<DecisionAuditEntry, "id" | "timestamp" | "supervision" | "domain"> & {
+  entry: Omit<
+    DecisionAuditEntry,
+    "id" | "timestamp" | "supervision" | "domain"
+  > & {
     id?: string;
     timestamp?: string;
     domain?: string;
@@ -64,7 +90,8 @@ export async function recordDecisionAudit(
 ): Promise<DecisionAuditEntry> {
   const filePath = resolveLogPath(customPath);
   const auditEntry: DecisionAuditEntry = {
-    id: entry.id || `dec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id:
+      entry.id || `dec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     timestamp: entry.timestamp || new Date().toISOString(),
     provider: entry.provider,
     model: entry.model,
@@ -100,7 +127,9 @@ export async function recordDecisionAudit(
 /**
  * Read all decision audit entries.
  */
-export async function readDecisionAuditEntries(customPath?: string): Promise<DecisionAuditEntry[]> {
+export async function readDecisionAuditEntries(
+  customPath?: string,
+): Promise<DecisionAuditEntry[]> {
   const filePath = resolveLogPath(customPath);
   try {
     const raw = await readFile(filePath, "utf8");
@@ -157,9 +186,11 @@ export async function updateDecisionSupervision(
 
   target.supervision.status = update.status;
   target.supervision.reviewedAt = new Date().toISOString();
-  if (update.reviewedBy !== undefined) target.supervision.reviewedBy = update.reviewedBy;
+  if (update.reviewedBy !== undefined)
+    target.supervision.reviewedBy = update.reviewedBy;
   if (update.notes !== undefined) target.supervision.notes = update.notes;
-  if (update.correctedAnswers !== undefined) target.supervision.correctedAnswers = update.correctedAnswers;
+  if (update.correctedAnswers !== undefined)
+    target.supervision.correctedAnswers = update.correctedAnswers;
 
   const content = entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
   await writeFile(filePath, content, "utf8");
@@ -173,7 +204,10 @@ export async function getDecisionAuditStats(customPath?: string) {
   const entries = await readDecisionAuditEntries(customPath);
   const stats = {
     total: entries.length,
-    byStatus: { pending: 0, approved: 0, corrected: 0 } as Record<string, number>,
+    byStatus: { pending: 0, approved: 0, corrected: 0 } as Record<
+      string,
+      number
+    >,
     byDomain: {} as Record<string, number>,
     byModel: {} as Record<string, number>,
     avgLatencyMs: 0,
@@ -190,7 +224,7 @@ export async function getDecisionAuditStats(customPath?: string) {
     totalLatency += e.latencyMs || 0;
   }
 
-  stats.avgLatencyMs = entries.length > 0 ? Number((totalLatency / entries.length).toFixed(3)) : 0;
+  stats.avgLatencyMs =
+    entries.length > 0 ? Number((totalLatency / entries.length).toFixed(3)) : 0;
   return stats;
 }
-

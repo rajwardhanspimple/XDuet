@@ -196,8 +196,12 @@ test("the local install's step says where its data really lives", async () => {
 
   await heading(view, "Where your data lives");
   const page = document.body.textContent ?? "";
-  expect(page).toContain("Your Bots, settings, durable threads, and memory stay in this install's");
-  expect(page).toContain("What you ask goes directly to your configured AI model.");
+  expect(page).toContain(
+    "Your Bots, settings, durable threads, and memory stay in this install's",
+  );
+  expect(page).toContain(
+    "What you ask goes directly to your configured AI model.",
+  );
 });
 
 test("the organization step offers self-hosting link to XDuet repository", async () => {

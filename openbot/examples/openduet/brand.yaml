@@ -4,4 +4,4 @@
 # orb and its Chat tab is about it. Rename the two together.
 tenant:
   id: openduet
-  product_name: XDuet
+  product_name: OpenDuet

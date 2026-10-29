@@ -3,37 +3,38 @@ import { Hono } from "hono";
 import { createNativeCopilotRouter } from "../src/copilot/native-router";
 import type { AgentRunner } from "../src/threads/runner-base";
 import { Observable } from "rxjs";
+import { EventType } from "@ag-ui/core";
 
 describe("Native CopilotKit Router", () => {
   const mockRunner: AgentRunner = {
     run: (req) => {
       return new Observable((sub) => {
         sub.next({
-          type: "RUN_STARTED",
+          type: EventType.RUN_STARTED,
           timestamp: Date.now(),
           threadId: req.threadId,
           runId: "run_1",
           protocolVersion: "1.0",
         });
         sub.next({
-          type: "TEXT_MESSAGE_START",
+          type: EventType.TEXT_MESSAGE_START,
           timestamp: Date.now(),
           messageId: "msg_1",
           role: "assistant",
         });
         sub.next({
-          type: "TEXT_MESSAGE_CONTENT",
+          type: EventType.TEXT_MESSAGE_CONTENT,
           timestamp: Date.now(),
           messageId: "msg_1",
           delta: "Hello from native AG-UI!",
         });
         sub.next({
-          type: "TEXT_MESSAGE_END",
+          type: EventType.TEXT_MESSAGE_END,
           timestamp: Date.now(),
           messageId: "msg_1",
         });
         sub.next({
-          type: "RUN_FINISHED",
+          type: EventType.RUN_FINISHED,
           timestamp: Date.now(),
           threadId: req.threadId,
           runId: "run_1",
@@ -45,7 +46,7 @@ describe("Native CopilotKit Router", () => {
     connect: (req) => {
       return new Observable((sub) => {
         sub.next({
-          type: "MESSAGES_SNAPSHOT",
+          type: EventType.MESSAGES_SNAPSHOT,
           timestamp: Date.now(),
           messages: [],
         });
@@ -173,11 +174,14 @@ describe("Native CopilotKit Router", () => {
   });
 
   it("POST /api/copilotkit/agent/:id/stop/:threadId stops execution", async () => {
-    const res = await app.request("/api/copilotkit/agent/default/stop/thread_1", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ runId: "run_1" }),
-    });
+    const res = await app.request(
+      "/api/copilotkit/agent/default/stop/thread_1",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: "run_1" }),
+      },
+    );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.stopped).toBe(true);
@@ -197,4 +201,3 @@ describe("Native CopilotKit Router", () => {
     expect(msg.toolCalls[0].function.arguments).toBe('{"table":"users"}');
   });
 });
-

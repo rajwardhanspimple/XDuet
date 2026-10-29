@@ -43,7 +43,7 @@ export function normalizeMessagesForHydration(rawMessages: any[]): any[] {
           name: tc.function?.name ?? tc.name,
           arguments:
             typeof (tc.function?.arguments ?? tc.args) === "string"
-              ? tc.function?.arguments ?? tc.args
+              ? (tc.function?.arguments ?? tc.args)
               : JSON.stringify(tc.function?.arguments ?? tc.args ?? {}),
         },
       }));
@@ -79,7 +79,8 @@ export function createNativeCopilotRouter(options: NativeRouterOptions): Hono {
   router.get("/info", async (c) => {
     try {
       const actor = await options.identifyActor(c.req.raw);
-      const availableAgents = await options.resolver.resolveAgentsForActor(actor);
+      const availableAgents =
+        await options.resolver.resolveAgentsForActor(actor);
       const agentMap: Record<string, unknown> = {};
 
       for (const [id, agent] of Object.entries(availableAgents)) {
@@ -142,11 +143,16 @@ export function createNativeCopilotRouter(options: NativeRouterOptions): Hono {
     const agent = await options.resolver.resolveAgentForActor(actor, agentId);
 
     if (!agent) {
-      return c.json({ error: `Agent '${agentId}' not found or unauthorized` }, 404);
+      return c.json(
+        { error: `Agent '${agentId}' not found or unauthorized` },
+        404,
+      );
     }
 
     // Contention Precondition: Check lock BEFORE initiating streamSSE.
-    const isBusy = await options.runner.isRunning({ threadId: rawBody.threadId });
+    const isBusy = await options.runner.isRunning({
+      threadId: rawBody.threadId,
+    });
     if (isBusy) {
       return c.json(
         {
@@ -219,7 +225,9 @@ export function createNativeCopilotRouter(options: NativeRouterOptions): Hono {
 
     // Mode A: Live run inquiry query
     if (body.forwardedProps?.openbotAsk === "live-run") {
-      const isBusy = await options.runner.isRunning({ threadId: body.threadId });
+      const isBusy = await options.runner.isRunning({
+        threadId: body.threadId,
+      });
       if (!isBusy) {
         return c.body(null, 204);
       }

@@ -12,7 +12,10 @@ const port = Number(process.env.DECISION_PORT ?? 8000);
 
 async function main() {
   const openDeciderWeights: TrainedWeights = JSON.parse(
-    await readFile(join(root, "models", "opendecider-nano", "weights.json"), "utf8"),
+    await readFile(
+      join(root, "models", "opendecider-nano", "weights.json"),
+      "utf8",
+    ),
   );
   const layaWeights: TrainedWeights = JSON.parse(
     await readFile(join(root, "models", "laya", "weights.json"), "utf8"),
@@ -80,10 +83,15 @@ async function main() {
   });
 
   console.info(`[Decider Server] Running on http://127.0.0.1:${server.port}`);
-  console.info(`  - OpenDecider endpoint: http://127.0.0.1:${server.port}/v1/decisions`);
-  console.info(`  - Laya endpoint:        http://127.0.0.1:${server.port}/v1/systemone`);
-  console.info(`  - Health check:         http://127.0.0.1:${server.port}/health`);
+  console.info(
+    `  - OpenDecider endpoint: http://127.0.0.1:${server.port}/v1/decisions`,
+  );
+  console.info(
+    `  - Laya endpoint:        http://127.0.0.1:${server.port}/v1/systemone`,
+  );
+  console.info(
+    `  - Health check:         http://127.0.0.1:${server.port}/health`,
+  );
 }
 
 void main();
-

@@ -24,12 +24,15 @@ export type TrainedWeights = {
   };
   toolWeights: {
     bias: number;
-    skills: Record<string, {
-      keywords?: string[];
-      bias: number;
-      negativeKeywords?: string[];
-      tokens?: Record<string, number>;
-    }>;
+    skills: Record<
+      string,
+      {
+        keywords?: string[];
+        bias: number;
+        negativeKeywords?: string[];
+        tokens?: Record<string, number>;
+      }
+    >;
   };
   routingWeights: {
     bias: Record<string, number>;
@@ -58,8 +61,12 @@ export function extractFeatures(text: string): Set<string> {
       feats.add(`${w} ${words[i + 1]} ${words[i + 2]} ${words[i + 3]}`);
     }
     if (i < words.length - 4) {
-      feats.add(`${w}_${words[i + 1]}_${words[i + 2]}_${words[i + 3]}_${words[i + 4]}`);
-      feats.add(`${w} ${words[i + 1]} ${words[i + 2]} ${words[i + 3]} ${words[i + 4]}`);
+      feats.add(
+        `${w}_${words[i + 1]}_${words[i + 2]}_${words[i + 3]}_${words[i + 4]}`,
+      );
+      feats.add(
+        `${w} ${words[i + 1]} ${words[i + 2]} ${words[i + 3]} ${words[i + 4]}`,
+      );
     }
   }
   return feats;
@@ -98,7 +105,10 @@ function softmax(scores: Record<string, number>): Record<string, number> {
 export class DeciderInferenceEngine {
   constructor(private readonly weights: TrainedWeights) {}
 
-  predict(state: unknown, questions: Record<string, DecisionQuestion>): DecisionAnswers {
+  predict(
+    state: unknown,
+    questions: Record<string, DecisionQuestion>,
+  ): DecisionAnswers {
     const answers: DecisionAnswers = {};
     const stateStr = typeof state === "string" ? state : JSON.stringify(state);
     const tokens = new Set(tokenize(stateStr));
@@ -125,76 +135,124 @@ export class DeciderInferenceEngine {
   ): NoulAnswer {
     // 1. Triage task (needs_you)
     if (qid === "needs_you" || qid === "urgent" || qid === "action_needed") {
-      const stateObj = (typeof state === "object" && state !== null) ? (state as Record<string, any>) : {};
+      const stateObj =
+        typeof state === "object" && state !== null
+          ? (state as Record<string, any>)
+          : {};
       const subj = String(stateObj.subject ?? "");
       const body = String(stateObj.body ?? "");
-      const rawText = typeof state === "string" ? state : `${subj} ${body} ${JSON.stringify(state)}`;
+      const rawText =
+        typeof state === "string"
+          ? state
+          : `${subj} ${body} ${JSON.stringify(state)}`;
       const cleanLower = rawText.toLowerCase();
 
       // Auto-resolved incident clause: airline/system already handled it automatically
-      const isAutoResolved = /automatically rebooked|already been rebooked|auto-rebooked|has been rebooked|already been automatically|no further action needed by/i.test(cleanLower);
+      const isAutoResolved =
+        /automatically rebooked|already been rebooked|auto-rebooked|has been rebooked|already been automatically|no further action needed by/i.test(
+          cleanLower,
+        );
       if (isAutoResolved) {
         return { type: "noul", noul: 0.01 };
       }
 
       // Code syntax vs Authentication code: CSS/JS code discussion is not a login OTP
-      const isCodeSnippet = /\b(code snippet|css code|html code|js code|\.btn\s*\{|function\s*\(|const\s+\w+\s*=)\b/i.test(cleanLower);
-      if (isCodeSnippet && !/\b(\d{5,8}|valid for \d+|expires in \d+|single-use|otp|2fa)\b/i.test(cleanLower)) {
+      const isCodeSnippet =
+        /\b(code snippet|css code|html code|js code|\.btn\s*\{|function\s*\(|const\s+\w+\s*=)\b/i.test(
+          cleanLower,
+        );
+      if (
+        isCodeSnippet &&
+        !/\b(\d{5,8}|valid for \d+|expires in \d+|single-use|otp|2fa)\b/i.test(
+          cleanLower,
+        )
+      ) {
         return { type: "noul", noul: 0.01 };
       }
 
       // Forwarded crisis: critical incident in forwarded subject or body overrides top-level "FYI"
-      const isForwardedCrisis = /fwd?:\s*(critical|urgent|outage|breach|action required|payment failed|unauthorized)/i.test(subj) ||
-        (/fyi/i.test(body) && /(database breach|unauthorized exfiltration|containment needed|production down|ransomware)/i.test(cleanLower));
+      const isForwardedCrisis =
+        /fwd?:\s*(critical|urgent|outage|breach|action required|payment failed|unauthorized)/i.test(
+          subj,
+        ) ||
+        (/fyi/i.test(body) &&
+          /(database breach|unauthorized exfiltration|containment needed|production down|ransomware)/i.test(
+            cleanLower,
+          ));
       if (isForwardedCrisis) {
         return { type: "noul", noul: 0.99 };
       }
 
-      const headers = (typeof stateObj.headers === "object" && stateObj.headers !== null) ? stateObj.headers : {};
-      const headerLabels = String(headers["X-Gmail-Labels"] ?? headers["x-gmail-labels"] ?? "").toLowerCase();
+      const headers =
+        typeof stateObj.headers === "object" && stateObj.headers !== null
+          ? stateObj.headers
+          : {};
+      const headerLabels = String(
+        headers["X-Gmail-Labels"] ?? headers["x-gmail-labels"] ?? "",
+      ).toLowerCase();
 
-      const isAccountSuspendedOrDeleted = /account is currently suspended|data will be deleted|account.*deactivation/i.test(cleanLower);
+      const isAccountSuspendedOrDeleted =
+        /account is currently suspended|data will be deleted|account.*deactivation/i.test(
+          cleanLower,
+        );
 
       // High-precedence authentic verification / OTPs
-      const isVerification = 
-        /\b(single-use code|verification code|sign-in code|sign-in verification|one-time verification|login code|confirm your .*email|verify your .*email|verify your identity|google verification code|relay verification code|dial verification code|marsai verification code)\b/i.test(cleanLower) ||
-        (/\b(code is|verification code|security code|your code|sign-in code)\b/i.test(cleanLower) && /\b(valid for|expires in|\d{5,8})\b/i.test(cleanLower));
+      const isVerification =
+        /\b(single-use code|verification code|sign-in code|sign-in verification|one-time verification|login code|confirm your .*email|verify your .*email|verify your identity|google verification code|relay verification code|dial verification code|marsai verification code)\b/i.test(
+          cleanLower,
+        ) ||
+        (/\b(code is|verification code|security code|your code|sign-in code)\b/i.test(
+          cleanLower,
+        ) &&
+          /\b(valid for|expires in|\d{5,8})\b/i.test(cleanLower));
 
       if (isVerification || isAccountSuspendedOrDeleted) {
         return { type: "noul", noul: 0.99 };
       }
 
       // High-precedence marketing & promos (unless critical alert)
-      const isMarketingPromo = 
+      const isMarketingPromo =
         headerLabels.includes("category_promotions") ||
         headerLabels.includes("spam") ||
-        /\b(50% off|flash sale|super-early-bird|early-bird|product hunt|livestream|perk :|weekly digest|weekly ai innovations|newsletter|web drop|primogems|scary story|free tier access expires soon|tokens login to claim|138 million tokens|unlimited ai video|sold out in sf|explore the forge agenda)\b/i.test(cleanLower) ||
-        /your cart is about to expire|no action needed|no action is needed|no action is required|for your records only|fyi only|accepted the invitation|has accepted this invitation|invoice payment confirmation|your invoice is available|receipt for your|rsvp not required|no rsvp needed|rsvp is optional|optional attendance|purely optional|strategic assessment.*for fy\d{4}|background summary of bilateral talks|attached is our \d+-page strategic assessment/i.test(cleanLower) ||
+        /\b(50% off|flash sale|super-early-bird|early-bird|product hunt|livestream|perk :|weekly digest|weekly ai innovations|newsletter|web drop|primogems|scary story|free tier access expires soon|tokens login to claim|138 million tokens|unlimited ai video|sold out in sf|explore the forge agenda)\b/i.test(
+          cleanLower,
+        ) ||
+        /your cart is about to expire|no action needed|no action is needed|no action is required|for your records only|fyi only|accepted the invitation|has accepted this invitation|invoice payment confirmation|your invoice is available|receipt for your|rsvp not required|no rsvp needed|rsvp is optional|optional attendance|purely optional|strategic assessment.*for fy\d{4}|background summary of bilateral talks|attached is our \d+-page strategic assessment/i.test(
+          cleanLower,
+        ) ||
         /confirm your subscription/i.test(cleanLower);
 
       if (isMarketingPromo) {
-        if (/unrecogni[sz]ed device|confirm within \d+ hours/i.test(cleanLower)) {
+        if (
+          /unrecogni[sz]ed device|confirm within \d+ hours/i.test(cleanLower)
+        ) {
           return { type: "noul", noul: 0.99 };
         }
         return { type: "noul", noul: 0.01 };
       }
 
       // High-precedence critical incidents & executive clearances
-      const isBulkHeader = 
+      const isBulkHeader =
         Object.entries(headers).some(([k, v]) => {
           const kl = k.toLowerCase();
           const vl = String(v).toLowerCase();
           return (
-            (kl === "precedence" && (vl.includes("bulk") || vl.includes("list"))) ||
+            (kl === "precedence" &&
+              (vl.includes("bulk") || vl.includes("list"))) ||
             kl === "list-id" ||
             kl === "list-unsubscribe" ||
             (kl === "auto-submitted" && vl !== "no")
           );
         }) || /mailing list|lists\.sourceforge/i.test(cleanLower);
 
-      const isCriticalIncident = 
-        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours|pls clear|please clear|need clearance|pls sign off|sign-off before|attached for your review and sign-off|need your sign-off|are you still here|are you in the office|pls print|please print|call sheet|call windows|gate change|boarding now|departs in \d+|flight.*cancelled/i.test(cleanLower) ||
-        (!isBulkHeader && /dmca|copyright infringement|subpoena|court summons|legal notice|takedown notice|counter-notice|regulatory notice/i.test(cleanLower)) ||
+      const isCriticalIncident =
+        /payment declined|payment.*was unsuccessful|service suspension|action required today|before \d+\s*(pm|am)|by eod|by cob|need your answer today|compromised personal access token|offer letter approval|production api returning 502|freight window closes|security alert|trial has been canceled|upgrade your cloudflare tunnel|important notice.*system upgrade|software factory trial|unrecogni[sz]ed device|confirm within \d+ hours|pls clear|please clear|need clearance|pls sign off|sign-off before|attached for your review and sign-off|need your sign-off|are you still here|are you in the office|pls print|please print|call sheet|call windows|gate change|boarding now|departs in \d+|flight.*cancelled/i.test(
+          cleanLower,
+        ) ||
+        (!isBulkHeader &&
+          /dmca|copyright infringement|subpoena|court summons|legal notice|takedown notice|counter-notice|regulatory notice/i.test(
+            cleanLower,
+          )) ||
         /\[.*support\] re:/i.test(subj);
 
       if (isCriticalIncident) {
@@ -202,8 +260,11 @@ export class DeciderInferenceEngine {
       }
 
       let score = this.weights.triageWeights.bias;
-      const fullText = typeof state === "string" ? state : JSON.stringify(state);
-      const feats = precomputedFeats ? new Set(precomputedFeats) : extractFeatures(fullText);
+      const fullText =
+        typeof state === "string" ? state : JSON.stringify(state);
+      const feats = precomputedFeats
+        ? new Set(precomputedFeats)
+        : extractFeatures(fullText);
 
       // Add header features if present
       for (const [hk, hv] of Object.entries(headers)) {
@@ -211,9 +272,12 @@ export class DeciderInferenceEngine {
         const hvLower = String(hv).toLowerCase();
         feats.add(`hdr:${hkLower}`);
         feats.add(`hdr:${hkLower}=${hvLower.slice(0, 25)}`);
-        if (hvLower.includes("bulk") || hvLower.includes("list")) feats.add("hdr_is_bulk");
-        if (hkLower.includes("unsubscribe") || hvLower.includes("unsubscribe")) feats.add("hdr_unsubscribe");
-        if (hkLower.includes("auto-submitted") && hvLower !== "no") feats.add("hdr_auto_submitted");
+        if (hvLower.includes("bulk") || hvLower.includes("list"))
+          feats.add("hdr_is_bulk");
+        if (hkLower.includes("unsubscribe") || hvLower.includes("unsubscribe"))
+          feats.add("hdr_unsubscribe");
+        if (hkLower.includes("auto-submitted") && hvLower !== "no")
+          feats.add("hdr_auto_submitted");
       }
 
       for (const f of feats) {
@@ -228,9 +292,12 @@ export class DeciderInferenceEngine {
 
     // 2. Tool selection question (e.g. skill slug)
     const skillSlug = qid.replace(/^skill:/, "");
-    const skillConfig = this.weights.toolWeights.skills[skillSlug] ?? this.weights.toolWeights.skills[qid];
+    const skillConfig =
+      this.weights.toolWeights.skills[skillSlug] ??
+      this.weights.toolWeights.skills[qid];
     if (skillConfig) {
-      const fullText = typeof state === "string" ? state : JSON.stringify(state);
+      const fullText =
+        typeof state === "string" ? state : JSON.stringify(state);
       const cleanLower = fullText.toLowerCase();
 
       // Check for explicit negative constraints on this tool
@@ -247,7 +314,7 @@ export class DeciderInferenceEngine {
       const targets = targetMap[skillSlug] || `(${skillSlug}|${qid}|sql)`;
       const negRegex = new RegExp(
         `\\b(do not|don't|dont|never|avoid|without|skip)\\s+([a-z]+\\s+)?(any\\s+|all\\s+|the\\s+|a\\s+|our\\s+)?${targets}\\b`,
-        "i"
+        "i",
       );
       if (negRegex.test(cleanLower)) {
         return { type: "noul", noul: 0.01 };
@@ -255,56 +322,116 @@ export class DeciderInferenceEngine {
 
       // Metaphor / Idiom / Context disambiguation
       if (skillSlug === "weather") {
-        if (/\bweathering the storm\b/i.test(cleanLower) || /\b(weather_history|\.csv|dataset|csv file|from local file)\b/i.test(cleanLower)) {
+        if (
+          /\bweathering the storm\b/i.test(cleanLower) ||
+          /\b(weather_history|\.csv|dataset|csv file|from local file)\b/i.test(
+            cleanLower,
+          )
+        ) {
           return { type: "noul", noul: 0.01 };
         }
       }
       if (skillSlug === "github") {
-        if (!/\b(pr\s*#?\d+|pull request)\b/i.test(cleanLower) && (/\b(in the browser|browser and take a screenshot|take a screenshot of the dashboard|salesforce|linkedin)\b/i.test(cleanLower) || /\brun the test suite locally before\b/i.test(cleanLower))) {
+        if (
+          !/\b(pr\s*#?\d+|pull request)\b/i.test(cleanLower) &&
+          (/\b(in the browser|browser and take a screenshot|take a screenshot of the dashboard|salesforce|linkedin)\b/i.test(
+            cleanLower,
+          ) ||
+            /\brun the test suite locally before\b/i.test(cleanLower))
+        ) {
           return { type: "noul", noul: 0.01 };
         }
-        if (/\b(commit our (git )?changes|git commit|review pull requests?|git diff|failing pr|pr\s*#\d+)\b/i.test(cleanLower)) {
+        if (
+          /\b(commit our (git )?changes|git commit|review pull requests?|git diff|failing pr|pr\s*#\d+)\b/i.test(
+            cleanLower,
+          )
+        ) {
           return { type: "noul", noul: 0.99 };
         }
       }
       if (skillSlug === "memory") {
-        if (/\b(compare the weather|weather in)\b/i.test(cleanLower) && !/\b(remember|recall|notes?|history)\b/i.test(cleanLower)) {
+        if (
+          /\b(compare the weather|weather in)\b/i.test(cleanLower) &&
+          !/\b(remember|recall|notes?|history)\b/i.test(cleanLower)
+        ) {
           return { type: "noul", noul: 0.01 };
         }
-        if (/\b(update (our )?(local )?memory|save to memory|store in memory|remember that|remember my|memory cache|memory notes|in our memory|search memory|check memory|lookup.*memory|look up.*memory)\b/i.test(cleanLower)) {
+        if (
+          /\b(update (our )?(local )?memory|save to memory|store in memory|remember that|remember my|memory cache|memory notes|in our memory|search memory|check memory|lookup.*memory|look up.*memory)\b/i.test(
+            cleanLower,
+          )
+        ) {
           return { type: "noul", noul: 0.99 };
         }
       }
       if (skillSlug === "computer") {
-        if (/\b(tell me a joke|tell a joke)\b/i.test(cleanLower) || /\bwith the screenshot.*attached\b/i.test(cleanLower)) {
+        if (
+          /\b(tell me a joke|tell a joke)\b/i.test(cleanLower) ||
+          /\bwith the screenshot.*attached\b/i.test(cleanLower)
+        ) {
           return { type: "noul", noul: 0.01 };
         }
       }
       if (skillSlug === "shell") {
-        if (/\b(calendar invite|schedule a .* invite|security guidelines|review our shell)\b/i.test(cleanLower)) {
+        if (
+          /\b(calendar invite|schedule a .* invite|security guidelines|review our shell)\b/i.test(
+            cleanLower,
+          )
+        ) {
           return { type: "noul", noul: 0.01 };
         }
-        if (/\b(shell curl|using shell|in the terminal|terminal command|run (a )?(shell|bash) script|execute (a )?(shell|bash) script|run in terminal)\b/i.test(cleanLower)) {
+        if (
+          /\b(shell curl|using shell|in the terminal|terminal command|run (a )?(shell|bash) script|execute (a )?(shell|bash) script|run in terminal)\b/i.test(
+            cleanLower,
+          )
+        ) {
           return { type: "noul", noul: 0.99 };
         }
       }
       if (skillSlug === "calendar") {
-        if (/\b(remember.*important points for my meeting|create a note)\b/i.test(cleanLower)) {
+        if (
+          /\b(remember.*important points for my meeting|create a note)\b/i.test(
+            cleanLower,
+          )
+        ) {
           return { type: "noul", noul: 0.01 };
         }
-        if (/\b(rain|temperature|snow|precipitation|weather forecast|wind speed|humidity|sunny|cloudy)\b/i.test(cleanLower) && !/\b(calendar|meeting|event|schedule|invite|slot|appointment|reschedule|sync)\b/i.test(cleanLower)) {
+        if (
+          /\b(rain|temperature|snow|precipitation|weather forecast|wind speed|humidity|sunny|cloudy)\b/i.test(
+            cleanLower,
+          ) &&
+          !/\b(calendar|meeting|event|schedule|invite|slot|appointment|reschedule|sync)\b/i.test(
+            cleanLower,
+          )
+        ) {
           return { type: "noul", noul: 0.01 };
         }
-        if (/\b(company calendar|on (my )?calendar|search (our )?calendar|calendar event|hiking calendar|schedule a (team )?meeting)\b/i.test(cleanLower)) {
+        if (
+          /\b(company calendar|on (my )?calendar|search (our )?calendar|calendar event|hiking calendar|schedule a (team )?meeting)\b/i.test(
+            cleanLower,
+          )
+        ) {
           return { type: "noul", noul: 0.99 };
         }
       }
       if (skillSlug === "database") {
-        if (/\b(search|look up|check|when).*calendar\b/i.test(cleanLower) && !/\b(run sql|query postgres|database table|select \*|insert into)\b/i.test(cleanLower)) {
+        if (
+          /\b(search|look up|check|when).*calendar\b/i.test(cleanLower) &&
+          !/\b(run sql|query postgres|database table|select \*|insert into)\b/i.test(
+            cleanLower,
+          )
+        ) {
           return { type: "noul", noul: 0.01 };
         }
         // Suppress database if query has zero database concepts and is about logs/curl/email
-        if (!/\b(database|sql|postgres|mysql|sqlite|table|query|schema|migration|row|select|insert|upsert|relation)\b/i.test(cleanLower) && /\b(error logs|shell curl|curl|timestamps|summary)\b/i.test(cleanLower)) {
+        if (
+          !/\b(database|sql|postgres|mysql|sqlite|table|query|schema|migration|row|select|insert|upsert|relation)\b/i.test(
+            cleanLower,
+          ) &&
+          /\b(error logs|shell curl|curl|timestamps|summary)\b/i.test(
+            cleanLower,
+          )
+        ) {
           return { type: "noul", noul: 0.01 };
         }
       }
@@ -322,7 +449,11 @@ export class DeciderInferenceEngine {
       } else if (skillConfig.keywords) {
         for (const kw of skillConfig.keywords) {
           const kwLower = kw.toLowerCase();
-          if (kwLower.includes(" ") ? fullText.toLowerCase().includes(kwLower) : tokens.has(kwLower)) {
+          if (
+            kwLower.includes(" ")
+              ? fullText.toLowerCase().includes(kwLower)
+              : tokens.has(kwLower)
+          ) {
             score += 4.5;
           }
         }
@@ -331,7 +462,11 @@ export class DeciderInferenceEngine {
       if (skillConfig.negativeKeywords) {
         for (const nkw of skillConfig.negativeKeywords) {
           const nkwLower = nkw.toLowerCase();
-          if (nkwLower.includes(" ") ? fullText.toLowerCase().includes(nkwLower) : tokens.has(nkwLower)) {
+          if (
+            nkwLower.includes(" ")
+              ? fullText.toLowerCase().includes(nkwLower)
+              : tokens.has(nkwLower)
+          ) {
             score -= 12.0;
           }
         }
@@ -342,11 +477,13 @@ export class DeciderInferenceEngine {
 
     // 3. Safety sub-questions (pre_approved, beyond_request)
     if (qid === "beyond_request") {
-      const isUnrelated = tokens.has("delete") || tokens.has("drop") || tokens.has("secret");
+      const isUnrelated =
+        tokens.has("delete") || tokens.has("drop") || tokens.has("secret");
       return { type: "noul", noul: isUnrelated ? 0.9 : 0.1 };
     }
     if (qid === "pre_approved") {
-      const explicit = tokens.has("please") || tokens.has("confirm") || tokens.has("execute");
+      const explicit =
+        tokens.has("please") || tokens.has("confirm") || tokens.has("execute");
       return { type: "noul", noul: explicit ? 0.85 : 0.2 };
     }
 
@@ -376,12 +513,13 @@ export class DeciderInferenceEngine {
 
     // 1. Safety verdict choice: proceed / needs_approval / hand_off
     if (qid === "verdict" && criteriaKeys.includes("proceed")) {
-      const fullText = typeof state === "string" ? state : JSON.stringify(state);
+      const fullText =
+        typeof state === "string" ? state : JSON.stringify(state);
       const feats = precomputedFeats ?? extractFeatures(fullText);
       const tokenWeights = this.weights.safetyWeights.tokens;
 
       for (const key of criteriaKeys) {
-        let score = (this.weights.safetyWeights.bias?.[key] ?? 0);
+        let score = this.weights.safetyWeights.bias?.[key] ?? 0;
         const classWeights = tokenWeights?.[key];
         if (classWeights) {
           for (const f of feats) {
@@ -398,8 +536,8 @@ export class DeciderInferenceEngine {
       const stateLower = fullText.toLowerCase();
       if (
         stateLower.includes("docker ps") ||
-        stateLower.includes("read_only\": true") ||
-        stateLower.includes("metadata_only\": true") ||
+        stateLower.includes('read_only": true') ||
+        stateLower.includes('metadata_only": true') ||
         stateLower.includes("df -h") ||
         stateLower.includes("df -k") ||
         stateLower.includes("git branch") ||
@@ -421,19 +559,28 @@ export class DeciderInferenceEngine {
         stateLower.includes("du -sh") ||
         stateLower.includes("tail -n") ||
         stateLower.includes("freebusy") ||
-        ((stateLower.includes("ping ") || stateLower.includes("ping -")) && !stateLower.includes("slack") && !stateLower.includes("#incident") && !stateLower.includes("@channel") && !stateLower.includes("everyone")) ||
+        ((stateLower.includes("ping ") || stateLower.includes("ping -")) &&
+          !stateLower.includes("slack") &&
+          !stateLower.includes("#incident") &&
+          !stateLower.includes("@channel") &&
+          !stateLower.includes("everyone")) ||
         stateLower.includes("traceroute ") ||
         stateLower.includes("dig ") ||
         stateLower.includes("nslookup ") ||
         stateLower.includes("rsync -avn") ||
         stateLower.includes("rsync -n") ||
-        (stateLower.includes("find ") && !stateLower.includes("-delete") && !stateLower.includes("-exec rm")) ||
+        (stateLower.includes("find ") &&
+          !stateLower.includes("-delete") &&
+          !stateLower.includes("-exec rm")) ||
         stateLower.includes("cat /etc/passwd") ||
         stateLower.includes("black --check") ||
         stateLower.includes("grep -rn") ||
         stateLower.includes("grep ")
       ) {
-        rawScores["proceed"] = Math.max((rawScores["proceed"] ?? 0) + 14.0, (rawScores["needs_approval"] ?? 0) + 5.0);
+        rawScores["proceed"] = Math.max(
+          (rawScores["proceed"] ?? 0) + 14.0,
+          (rawScores["needs_approval"] ?? 0) + 5.0,
+        );
       }
 
       // Benign git branch checkout navigation (local branch only, not chained with commit/push)
@@ -446,7 +593,10 @@ export class DeciderInferenceEngine {
         !stateLower.includes("git push") &&
         !stateLower.includes("git commit")
       ) {
-        rawScores["proceed"] = Math.max((rawScores["proceed"] ?? 0) + 24.0, (rawScores["needs_approval"] ?? 0) + 6.0);
+        rawScores["proceed"] = Math.max(
+          (rawScores["proceed"] ?? 0) + 24.0,
+          (rawScores["needs_approval"] ?? 0) + 6.0,
+        );
       }
 
       if (
@@ -455,11 +605,18 @@ export class DeciderInferenceEngine {
         stateLower.includes("| zsh") ||
         stateLower.includes("| sudo") ||
         stateLower.includes("git push") ||
-        (!stateLower.includes("git log") && !stateLower.includes("git status") && (stateLower.includes("git commit -") || stateLower.includes("git commit \"") || stateLower.includes("git commit '") || stateLower.includes("&& git commit"))) ||
+        (!stateLower.includes("git log") &&
+          !stateLower.includes("git status") &&
+          (stateLower.includes("git commit -") ||
+            stateLower.includes('git commit "') ||
+            stateLower.includes("git commit '") ||
+            stateLower.includes("&& git commit"))) ||
         stateLower.includes("slack.post") ||
         stateLower.includes("@channel") ||
         stateLower.includes("#incident") ||
-        (stateLower.includes("fs.write") && !stateLower.includes("readme.md") && !stateLower.includes("/repo/readme")) ||
+        (stateLower.includes("fs.write") &&
+          !stateLower.includes("readme.md") &&
+          !stateLower.includes("/repo/readme")) ||
         stateLower.includes("chmod") ||
         stateLower.includes("delete_all") ||
         stateLower.includes("bulk_close") ||
@@ -470,9 +627,13 @@ export class DeciderInferenceEngine {
         stateLower.includes("drop schema") ||
         stateLower.includes("drop column") ||
         stateLower.includes("alter table") ||
-        (stateLower.includes("rm -rf") && !stateLower.includes("grep ") && !stateLower.includes("grep -")) ||
+        (stateLower.includes("rm -rf") &&
+          !stateLower.includes("grep ") &&
+          !stateLower.includes("grep -")) ||
         stateLower.includes("mkfs") ||
-        (stateLower.includes("fdisk") && !stateLower.includes("-l") && !stateLower.includes("--list")) ||
+        (stateLower.includes("fdisk") &&
+          !stateLower.includes("-l") &&
+          !stateLower.includes("--list")) ||
         stateLower.includes("parted") ||
         stateLower.includes("wipefs") ||
         stateLower.includes("dd if=") ||
@@ -490,16 +651,31 @@ export class DeciderInferenceEngine {
         stateLower.includes("crontab -r") ||
         stateLower.includes("tar -xvf") ||
         stateLower.includes("tar -xzf") ||
-        (stateLower.includes("--delete") && !stateLower.includes("rsync -avn") && !stateLower.includes("rsync -n") && !stateLower.includes("--dry-run")) ||
+        (stateLower.includes("--delete") &&
+          !stateLower.includes("rsync -avn") &&
+          !stateLower.includes("rsync -n") &&
+          !stateLower.includes("--dry-run")) ||
         stateLower.includes("resolv.conf") ||
         stateLower.includes("git clean")
       ) {
-        rawScores["needs_approval"] = Math.max((rawScores["needs_approval"] ?? 0) + 14.0, (rawScores["hand_off"] ?? 0) + 5.0, (rawScores["proceed"] ?? 0) + 6.0);
+        rawScores["needs_approval"] = Math.max(
+          (rawScores["needs_approval"] ?? 0) + 14.0,
+          (rawScores["hand_off"] ?? 0) + 5.0,
+          (rawScores["proceed"] ?? 0) + 6.0,
+        );
         rawScores["proceed"] = Math.min(rawScores["proceed"] ?? 0, -5.0);
       }
 
-      if (stateLower.includes(">> ~/") || stateLower.includes(">> /etc/") || stateLower.includes(">> ~/.") || stateLower.includes(".bashrc")) {
-        rawScores["needs_approval"] = Math.max((rawScores["needs_approval"] ?? 0) + 12.0, (rawScores["hand_off"] ?? 0) + 5.0);
+      if (
+        stateLower.includes(">> ~/") ||
+        stateLower.includes(">> /etc/") ||
+        stateLower.includes(">> ~/.") ||
+        stateLower.includes(".bashrc")
+      ) {
+        rawScores["needs_approval"] = Math.max(
+          (rawScores["needs_approval"] ?? 0) + 12.0,
+          (rawScores["hand_off"] ?? 0) + 5.0,
+        );
       }
 
       if (
@@ -507,7 +683,9 @@ export class DeciderInferenceEngine {
         stateLower.includes("trusted-device") ||
         stateLower.includes("gpg --detach-sign") ||
         stateLower.includes("yubikey") ||
-        (stateLower.includes("ssn") && !stateLower.includes("drop column") && !stateLower.includes("alter table")) ||
+        (stateLower.includes("ssn") &&
+          !stateLower.includes("drop column") &&
+          !stateLower.includes("alter table")) ||
         stateLower.includes("payouts") ||
         stateLower.includes("secrets.age") ||
         stateLower.includes("wire_transfer") ||
@@ -517,8 +695,14 @@ export class DeciderInferenceEngine {
         stateLower.includes("root key") ||
         stateLower.includes("billing.add_funds")
       ) {
-        rawScores["hand_off"] = Math.max((rawScores["hand_off"] ?? 0) + 20.0, (rawScores["needs_approval"] ?? 0) + 6.0);
-        rawScores["needs_approval"] = Math.min(rawScores["needs_approval"] ?? 0, -2.0);
+        rawScores["hand_off"] = Math.max(
+          (rawScores["hand_off"] ?? 0) + 20.0,
+          (rawScores["needs_approval"] ?? 0) + 6.0,
+        );
+        rawScores["needs_approval"] = Math.min(
+          rawScores["needs_approval"] ?? 0,
+          -2.0,
+        );
         rawScores["proceed"] = Math.min(rawScores["proceed"] ?? 0, -5.0);
       }
 
@@ -542,7 +726,9 @@ export class DeciderInferenceEngine {
     // 2. Safety category choice: none / credentials / security_settings / payments
     if (qid === "safety" && criteriaKeys.includes("credentials")) {
       rawScores["none"] = 1.0;
-      for (const [cat, words] of Object.entries(this.weights.safetyWeights.categories ?? {})) {
+      for (const [cat, words] of Object.entries(
+        this.weights.safetyWeights.categories ?? {},
+      )) {
         for (const w of words) {
           if (tokens.has(w)) rawScores[cat] = (rawScores[cat] ?? 0) + 3.5;
         }
@@ -565,15 +751,18 @@ export class DeciderInferenceEngine {
     }
 
     // 3. Routing / Coworker choice
-    const stateLower = (typeof state === "string" ? state : JSON.stringify(state)).toLowerCase();
+    const stateLower = (
+      typeof state === "string" ? state : JSON.stringify(state)
+    ).toLowerCase();
     const routingKeywords = this.weights.routingWeights.keywords ?? {};
     const routingTokens = this.weights.routingWeights.tokens;
 
     if (routingTokens && Object.keys(routingTokens).length > 0) {
-      const fullText = typeof state === "string" ? state : JSON.stringify(state);
+      const fullText =
+        typeof state === "string" ? state : JSON.stringify(state);
       const feats = precomputedFeats ?? extractFeatures(fullText);
       for (const key of criteriaKeys) {
-        let score = (this.weights.routingWeights.bias[key] ?? 0);
+        let score = this.weights.routingWeights.bias[key] ?? 0;
         const classWeights = routingTokens[key];
         if (classWeights) {
           for (const f of feats) {
@@ -587,21 +776,46 @@ export class DeciderInferenceEngine {
       }
 
       // Strong domain calibrators for coworker routing
-      if (/\b(stripe subscriptions?|past_due|subscription balance|refund for customer|refund.*subscription)\b/i.test(stateLower) && !/\b(typeerror|exception|debug|syntax error)\b/i.test(stateLower)) {
+      if (
+        /\b(stripe subscriptions?|past_due|subscription balance|refund for customer|refund.*subscription)\b/i.test(
+          stateLower,
+        ) &&
+        !/\b(typeerror|exception|debug|syntax error)\b/i.test(stateLower)
+      ) {
         rawScores["billing"] = (rawScores["billing"] ?? 0) + 8.0;
       }
-      if (/\b(nginx|keepalive|access logs|504 gateway|alerting rules|pagerduty|escalation policies|kubernetes cluster|soc2|compliance audit|access control policies|cgroup|docker daemon|root cause analysis|\brca\b|database failover|failover and failback)\b/i.test(stateLower)) {
+      if (
+        /\b(nginx|keepalive|access logs|504 gateway|alerting rules|pagerduty|escalation policies|kubernetes cluster|soc2|compliance audit|access control policies|cgroup|docker daemon|root cause analysis|\brca\b|database failover|failover and failback)\b/i.test(
+          stateLower,
+        )
+      ) {
         rawScores["ops"] = (rawScores["ops"] ?? 0) + 16.0;
         rawScores["writer"] = Math.min(rawScores["writer"] ?? 0, -5.0);
       }
-      if (/\b(customer-facing post-mortem|status page summary|release notes|blog post|customer documentation|user documentation|investor update)\b/i.test(stateLower) && !/\b(api|integration|typescript|endpoint|unit tests?|rca|root cause analysis|database failover)\b/i.test(stateLower)) {
+      if (
+        /\b(customer-facing post-mortem|status page summary|release notes|blog post|customer documentation|user documentation|investor update)\b/i.test(
+          stateLower,
+        ) &&
+        !/\b(api|integration|typescript|endpoint|unit tests?|rca|root cause analysis|database failover)\b/i.test(
+          stateLower,
+        )
+      ) {
         rawScores["writer"] = (rawScores["writer"] ?? 0) + 16.0;
       }
-      if (/\b(user research|qualitative|interview transcripts?|customer interviews?|conduct.*interviews|churn.*drivers|account churn|churned customers|literature|architectural.*comparison|trade-offs.*benchmarks)\b/i.test(stateLower) && !/\b(typeerror|flexbox|sql migration)\b/i.test(stateLower)) {
+      if (
+        /\b(user research|qualitative|interview transcripts?|customer interviews?|conduct.*interviews|churn.*drivers|account churn|churned customers|literature|architectural.*comparison|trade-offs.*benchmarks)\b/i.test(
+          stateLower,
+        ) &&
+        !/\b(typeerror|flexbox|sql migration)\b/i.test(stateLower)
+      ) {
         rawScores["researcher"] = (rawScores["researcher"] ?? 0) + 18.0;
         rawScores["triage"] = Math.min(rawScores["triage"] ?? 0, -5.0);
       }
-      if (/\b(native heap|memory leak|c\+\+|addon|flexbox|typeerror|uncaught|sql migration|docker compose up|unit tests?|api integration|write.*api|in typescript|in python|in rust|in go)\b/i.test(stateLower)) {
+      if (
+        /\b(native heap|memory leak|c\+\+|addon|flexbox|typeerror|uncaught|sql migration|docker compose up|unit tests?|api integration|write.*api|in typescript|in python|in rust|in go)\b/i.test(
+          stateLower,
+        )
+      ) {
         rawScores["coder"] = (rawScores["coder"] ?? 0) + 18.0;
         rawScores["writer"] = Math.min(rawScores["writer"] ?? 0, -5.0);
       }
@@ -609,12 +823,31 @@ export class DeciderInferenceEngine {
       for (const key of criteriaKeys) {
         const desc = question.criteria[key] ?? "";
         const descTokens = tokenize(desc);
-        let score = (this.weights.routingWeights.bias[key] ?? 0);
+        let score = this.weights.routingWeights.bias[key] ?? 0;
 
         // Match criteria description tokens (excluding common stopwords with singular/plural matching)
         const STOPWORDS = new Set([
-          "the", "and", "in", "of", "to", "a", "an", "is", "for", "on", "with",
-          "as", "by", "at", "from", "be", "or", "that", "this", "it", "are",
+          "the",
+          "and",
+          "in",
+          "of",
+          "to",
+          "a",
+          "an",
+          "is",
+          "for",
+          "on",
+          "with",
+          "as",
+          "by",
+          "at",
+          "from",
+          "be",
+          "or",
+          "that",
+          "this",
+          "it",
+          "are",
         ]);
         for (const dt of descTokens) {
           if (STOPWORDS.has(dt)) continue;
@@ -631,7 +864,11 @@ export class DeciderInferenceEngine {
         const kws = routingKeywords[key] ?? [];
         for (const kw of kws) {
           const kwLower = kw.toLowerCase();
-          if (kwLower.includes(" ") ? stateLower.includes(kwLower) : tokens.has(kwLower)) {
+          if (
+            kwLower.includes(" ")
+              ? stateLower.includes(kwLower)
+              : tokens.has(kwLower)
+          ) {
             score += 3.5;
           }
         }
@@ -666,9 +903,20 @@ export class DeciderInferenceEngine {
     const numLevels = question.criteria.length;
     let urgencyScore = 0.2; // default low
 
-    if (tokens.has("urgent") || tokens.has("asap") || tokens.has("today") || tokens.has("failed") || tokens.has("outage")) {
+    if (
+      tokens.has("urgent") ||
+      tokens.has("asap") ||
+      tokens.has("today") ||
+      tokens.has("failed") ||
+      tokens.has("outage")
+    ) {
       urgencyScore = 0.88;
-    } else if (tokens.has("soon") || tokens.has("review") || tokens.has("confirm") || tokens.has("friday")) {
+    } else if (
+      tokens.has("soon") ||
+      tokens.has("review") ||
+      tokens.has("confirm") ||
+      tokens.has("friday")
+    ) {
       urgencyScore = 0.65;
     }
 
@@ -688,4 +936,3 @@ export class DeciderInferenceEngine {
     };
   }
 }
-

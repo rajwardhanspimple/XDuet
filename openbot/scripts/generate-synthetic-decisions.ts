@@ -16,14 +16,18 @@ import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
 const count = Number(process.argv[2] ?? 50);
-const outputPath = process.argv[3] ?? join(root, "data", "synthetic-decisions.jsonl");
+const outputPath =
+  process.argv[3] ?? join(root, "data", "synthetic-decisions.jsonl");
 
 const apiKey = process.env.OPENAI_API_KEY ?? process.env.DECISION_API_KEY;
-const baseUrl = process.env.OPENAI_BASE_URL ?? "https://api.inceptionlabs.ai/v1";
+const baseUrl =
+  process.env.OPENAI_BASE_URL ?? "https://api.inceptionlabs.ai/v1";
 const model = process.env.BOT_MODEL ?? "mercury-3";
 
 if (!apiKey) {
-  console.error("Error: OPENAI_API_KEY or DECISION_API_KEY is required in environment.");
+  console.error(
+    "Error: OPENAI_API_KEY or DECISION_API_KEY is required in environment.",
+  );
   process.exit(1);
 }
 
@@ -62,12 +66,16 @@ async function callMercury(prompt: string): Promise<string> {
     throw new Error(`Mercury API error (${response.status}): ${text}`);
   }
 
-  const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const json = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
   return json.choices?.[0]?.message?.content ?? "";
 }
 
 async function main() {
-  console.info(`[Synthetic Generator] Generating ${count} decision examples using ${model}...`);
+  console.info(
+    `[Synthetic Generator] Generating ${count} decision examples using ${model}...`,
+  );
   await mkdir(join(root, "data"), { recursive: true });
 
   let generated = 0;
@@ -104,13 +112,16 @@ Output only the raw JSON objects separated by newlines.`;
       }
       console.info(`  Progress: ${generated}/${count} samples generated...`);
     } catch (err) {
-      console.error(`  Batch failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(
+        `  Batch failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
       break;
     }
   }
 
-  console.info(`\n[Synthetic Generator] Completed! Generated ${generated} samples into ${outputPath}`);
+  console.info(
+    `\n[Synthetic Generator] Completed! Generated ${generated} samples into ${outputPath}`,
+  );
 }
 
 void main();
-

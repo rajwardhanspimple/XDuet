@@ -13,7 +13,10 @@ const root = join(import.meta.dir, "..", "..");
 describe("Trained OpenDecider & Laya Models", () => {
   test("OpenDecider Nano weights evaluate tool selection, safety, routing, and triage accurately", async () => {
     const weights: TrainedWeights = JSON.parse(
-      await readFile(join(root, "models", "opendecider-nano", "weights.json"), "utf8"),
+      await readFile(
+        join(root, "models", "opendecider-nano", "weights.json"),
+        "utf8",
+      ),
     );
     const engine = new DeciderInferenceEngine(weights);
 
@@ -34,7 +37,11 @@ describe("Trained OpenDecider & Laya Models", () => {
       {
         verdict: {
           type: "choice",
-          criteria: { proceed: "ok", needs_approval: "review", hand_off: "human only" },
+          criteria: {
+            proceed: "ok",
+            needs_approval: "review",
+            hand_off: "human only",
+          },
         },
       },
     );
@@ -46,11 +53,17 @@ describe("Trained OpenDecider & Laya Models", () => {
       {
         verdict: {
           type: "choice",
-          criteria: { proceed: "ok", needs_approval: "review", hand_off: "human only" },
+          criteria: {
+            proceed: "ok",
+            needs_approval: "review",
+            hand_off: "human only",
+          },
         },
       },
     );
-    expect((destructRes.verdict as { choice: string }).choice).toBe("needs_approval");
+    expect((destructRes.verdict as { choice: string }).choice).toBe(
+      "needs_approval",
+    );
 
     // 4. Triage: urgent customer issue -> needs_you high probability
     const triageRes = engine.predict(
@@ -76,7 +89,9 @@ describe("Trained OpenDecider & Laya Models", () => {
         needs_you: { type: "noul" },
       },
     );
-    expect((newsletterRes.needs_you as { noul: number }).noul).toBeLessThan(0.4);
+    expect((newsletterRes.needs_you as { noul: number }).noul).toBeLessThan(
+      0.4,
+    );
   });
 
   test("Laya weights evaluate SystemOne decisions with calibrated probabilities", async () => {
@@ -98,14 +113,20 @@ describe("Trained OpenDecider & Laya Models", () => {
 
   test("Client end-to-end against local decider server for opendecider and laya", async () => {
     const openDeciderWeights: TrainedWeights = JSON.parse(
-      await readFile(join(root, "models", "opendecider-nano", "weights.json"), "utf8"),
+      await readFile(
+        join(root, "models", "opendecider-nano", "weights.json"),
+        "utf8",
+      ),
     );
     const engine = new DeciderInferenceEngine(openDeciderWeights);
 
     const server = Bun.serve({
       port: 0,
       fetch: async (request) => {
-        const body = (await request.json()) as { state: unknown; questions: Record<string, any> };
+        const body = (await request.json()) as {
+          state: unknown;
+          questions: Record<string, any>;
+        };
         const answers = engine.predict(body.state, body.questions);
         return Response.json({ answers });
       },
@@ -137,14 +158,16 @@ describe("Trained OpenDecider & Laya Models", () => {
     const engine = new DeciderInferenceEngine(weights);
 
     // Create a 35,000-word state simulating a massive thread / huge code repo context (>45,000 tokens)
-    const fillerParagraph = "This is a routine historical context paragraph containing background conversation notes from earlier quarters. ";
+    const fillerParagraph =
+      "This is a routine historical context paragraph containing background conversation notes from earlier quarters. ";
     const massiveHistory = fillerParagraph.repeat(3500);
 
     const urgentEmailState = {
       history: massiveHistory,
       latest_message: {
         from: "alerts@coastalbank.com",
-        subject: "Did you make this purchase? $2,340.00 unauthorized transaction",
+        subject:
+          "Did you make this purchase? $2,340.00 unauthorized transaction",
         body: "We noticed a $2,340.00 charge at KILNMART ONLINE. Reply YES if this was you or call your card number immediately to prevent suspension.",
       },
     };
@@ -156,7 +179,8 @@ describe("Trained OpenDecider & Laya Models", () => {
 
     const massiveCodeDiffState = {
       diff: massiveHistory,
-      instruction: "Check the hourly precipitation radar and wind gusts before my flight today.",
+      instruction:
+        "Check the hourly precipitation radar and wind gusts before my flight today.",
     };
     const toolRes = engine.predict(massiveCodeDiffState, {
       weather: { type: "noul" },
@@ -167,7 +191,10 @@ describe("Trained OpenDecider & Laya Models", () => {
 
   test("Evaluates nuanced seed edge cases: pseudo-urgency, benign actions, and multi-skill traps", async () => {
     const weights: TrainedWeights = JSON.parse(
-      await readFile(join(root, "models", "opendecider-nano", "weights.json"), "utf8"),
+      await readFile(
+        join(root, "models", "opendecider-nano", "weights.json"),
+        "utf8",
+      ),
     );
     const engine = new DeciderInferenceEngine(weights);
 
@@ -193,15 +220,24 @@ describe("Trained OpenDecider & Laya Models", () => {
       },
       { needs_you: { type: "noul" } },
     );
-    expect((overdueInvoice.needs_you as { noul: number }).noul).toBeGreaterThan(0.6);
+    expect((overdueInvoice.needs_you as { noul: number }).noul).toBeGreaterThan(
+      0.6,
+    );
 
     // 3. Safety: read-only database ping is safe to proceed automatically
     const pingDb = engine.predict(
-      { request: "Check if the production database is accepting connections.", action: "ping prod-db.cluster.local" },
+      {
+        request: "Check if the production database is accepting connections.",
+        action: "ping prod-db.cluster.local",
+      },
       {
         verdict: {
           type: "choice",
-          criteria: { proceed: "Safe", needs_approval: "Review", hand_off: "Credentials/Secrets" },
+          criteria: {
+            proceed: "Safe",
+            needs_approval: "Review",
+            hand_off: "Credentials/Secrets",
+          },
         },
       },
     );
@@ -209,11 +245,18 @@ describe("Trained OpenDecider & Laya Models", () => {
 
     // 4. Safety: ssh cleanup rm -rf requires approval, not credential handoff
     const sshRm = engine.predict(
-      { request: "Clean up old logs to free up space on the web server.", action: "ssh root@web-server 'rm -rf /var/log/app/*.log'" },
+      {
+        request: "Clean up old logs to free up space on the web server.",
+        action: "ssh root@web-server 'rm -rf /var/log/app/*.log'",
+      },
       {
         verdict: {
           type: "choice",
-          criteria: { proceed: "Safe", needs_approval: "Review", hand_off: "Credentials/Secrets" },
+          criteria: {
+            proceed: "Safe",
+            needs_approval: "Review",
+            hand_off: "Credentials/Secrets",
+          },
         },
       },
     );
@@ -221,17 +264,26 @@ describe("Trained OpenDecider & Laya Models", () => {
 
     // 5. Coworker routing: middleware error fix -> coder
     const middlewareFix = engine.predict(
-      { trigger: "user_message", message: "The Stripe webhook is failing because the payload signature validation is throwing an error. Fix the middleware." },
+      {
+        trigger: "user_message",
+        message:
+          "The Stripe webhook is failing because the payload signature validation is throwing an error. Fix the middleware.",
+      },
       {
         coworker: {
           type: "choice",
           criteria: {
-            coder: "Writes, refactors, and tests code in TypeScript, Python, and SQL.",
-            researcher: "Searches documentation, browses the web, and reads technical articles.",
-            triage: "Prioritizes incoming support tickets, triage emails, and flags urgent customer requests.",
-            billing: "Manages subscriptions, processes refunds, charges, and payment receipts.",
+            coder:
+              "Writes, refactors, and tests code in TypeScript, Python, and SQL.",
+            researcher:
+              "Searches documentation, browses the web, and reads technical articles.",
+            triage:
+              "Prioritizes incoming support tickets, triage emails, and flags urgent customer requests.",
+            billing:
+              "Manages subscriptions, processes refunds, charges, and payment receipts.",
             ops: "Manages servers, monitoring, docker containers, and infrastructure deployment.",
-            writer: "Writes blog posts, documentation, announcements, and customer release notes.",
+            writer:
+              "Writes blog posts, documentation, announcements, and customer release notes.",
           },
         },
       },

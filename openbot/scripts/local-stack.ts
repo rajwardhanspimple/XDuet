@@ -266,8 +266,7 @@ async function up(): Promise<void> {
             WORKSPACE_DIR: environment.WORKSPACE_DIR
               ? resolve(root, environment.WORKSPACE_DIR)
               : join(runDirectory, "workspace"),
-            EGRESS_POLICY_REQUIRED:
-              environment.EGRESS_POLICY_REQUIRED ?? "0",
+            EGRESS_POLICY_REQUIRED: environment.EGRESS_POLICY_REQUIRED ?? "0",
             AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS:
               environment.AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS ?? "true",
           },

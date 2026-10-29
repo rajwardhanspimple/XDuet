@@ -44,10 +44,13 @@ describe("local learning runtime", () => {
     expect(loaded).toBe("1. Navigate to portal. 2. Click submit button.");
 
     // Test copilotkit_read_skill_file tool execution
-    const fileContent = await invocation?.execute("copilotkit_read_skill_file", {
-      skill_name: "browser-demo",
-      path: "guide.txt",
-    });
+    const fileContent = await invocation?.execute(
+      "copilotkit_read_skill_file",
+      {
+        skill_name: "browser-demo",
+        path: "guide.txt",
+      },
+    );
     expect(fileContent).toBe("Detailed guide text");
 
     // Status returns configured: true and initialized: true
@@ -65,4 +68,3 @@ describe("local learning runtime", () => {
     expect(invocation).toBeUndefined();
   });
 });
-

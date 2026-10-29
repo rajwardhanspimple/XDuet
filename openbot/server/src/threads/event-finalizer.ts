@@ -15,7 +15,10 @@ export function finalizeRunEvents(
   options?: FinalizeRunOptions | "cancelled" | "error" | "timeout",
 ): BaseEvent[] {
   const appended: BaseEvent[] = [];
-  const openToolCalls = new Map<string, { name?: string; messageId?: string }>();
+  const openToolCalls = new Map<
+    string,
+    { name?: string; messageId?: string }
+  >();
 
   for (const event of events) {
     if (event.type === "TOOL_CALL_START") {

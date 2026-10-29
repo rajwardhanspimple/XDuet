@@ -52,7 +52,7 @@ afterEach(() => {
 });
 afterAll(() => GlobalRegistrator.unregister());
 
-const banner = { name: "Self-host XDuet" } as const;
+const banner = { name: "Self-host OpenDuet" } as const;
 
 function setup({
   enabled = true,
@@ -96,13 +96,11 @@ function setup({
 test("offers self-hosting with a link CopilotKit can tell came from the app", () => {
   const { view } = setup();
   expect(
-    view.getByText("Self-host XDuet for your organization."),
+    view.getByText("Self-host OpenDuet for your organization."),
   ).toBeTruthy();
   const link = view.getByRole("link", { name: "Talk to an engineer" });
   expect(link.getAttribute("href")).toBe(SELF_HOST_URL);
-  expect(SELF_HOST_URL).toBe(
-    "https://github.com/rajwardhanspimple/XDuet",
-  );
+  expect(SELF_HOST_URL).toBe("https://github.com/rajwardhanspimple/XDuet");
   expect(link.getAttribute("target")).toBe("_blank");
   expect(link.getAttribute("rel")).toBe("noopener noreferrer");
 });

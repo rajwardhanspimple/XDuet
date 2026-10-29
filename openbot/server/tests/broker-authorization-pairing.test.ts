@@ -232,7 +232,9 @@ describe("authorizations and authorizationId are declared as a pair", () => {
     ).toBe(true);
     expect(
       coverage.some((p) =>
-        p.replace(/\\/g, "/").startsWith("src/plugins/composio-client/consent.ts"),
+        p
+          .replace(/\\/g, "/")
+          .startsWith("src/plugins/composio-client/consent.ts"),
       ),
     ).toBe(true);
     // A floor that notices this scan collapsing, not a count to keep up to date; it sits just under

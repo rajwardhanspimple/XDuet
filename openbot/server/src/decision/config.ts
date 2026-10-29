@@ -164,8 +164,7 @@ export function decisionConfigFromEnvironment(
     };
   }
 
-  const defaultModel =
-    provider === "opendecider" ? "opendecider-nano" : "laya";
+  const defaultModel = provider === "opendecider" ? "opendecider-nano" : "laya";
   const apiKey =
     text(environment, "DECISION_API_KEY") ??
     text(environment, "OPENDECIDER_API_KEY") ??

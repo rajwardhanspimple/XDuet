@@ -1,4 +1,9 @@
-import type { AbstractAgent, BaseEvent, Message, RunAgentInput } from "@ag-ui/client";
+import type {
+  AbstractAgent,
+  BaseEvent,
+  Message,
+  RunAgentInput,
+} from "@ag-ui/client";
 import type { Observable } from "rxjs";
 
 export interface AgentRunnerRunRequest {
@@ -9,7 +14,7 @@ export interface AgentRunnerRunRequest {
 
 export interface AgentRunnerConnectRequest {
   threadId: string;
-  agentId: string;
+  agentId?: string;
 }
 
 export interface AgentRunnerStopRequest {
